@@ -1,0 +1,21 @@
+# Match sandbox image: game engine + maps + reference robots only.
+# User bots are copied in per-match by the worker (docker cp), never baked in.
+FROM debian:bookworm-slim
+
+# python3 so uploaded Python bots can run; nothing else.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY maps               /filler/maps
+COPY linux_robots       /filler/robots
+COPY linux_game_engine  /filler/game_engine
+
+# Maps may arrive with CRLF endings from a Windows checkout; the engine rejects them.
+RUN sed -i 's/\r$//' /filler/maps/* && \
+    chmod +x /filler/game_engine /filler/robots/* && \
+    mkdir -p /filler/bots/a /filler/bots/b && \
+    useradd -m -u 10001 arena && \
+    chown -R arena:arena /filler/bots
+
+WORKDIR /filler
+USER arena

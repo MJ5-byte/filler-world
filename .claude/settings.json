@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(./bin/worker.exe)",
+      "Bash(docker exec *)",
+      "Bash(grep -v '^$')",
+      "Bash(read id *)",
+      "Bash(curl -s http://localhost:8080/api/leaderboard)",
+      "Bash(python -c \"import json,sys; [print\\(f\\\\\"{b['name']:12} {b['rating']:.0f}  {b['wins']}W {b['losses']}L {b['draws']}D \\({b['matchesPlayed']} played\\)\\\\\"\\) for b in json.load\\(sys.stdin\\)]\")",
+      "Bash(curl -s http://localhost:8080/api/matches/5/replay)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); m=d['match']; t=d['turns']; print\\(m['botAName'],'vs',m['botBName'],'on',m['mapName'],m['scoreA'],'-',m['scoreB']\\); print\\('turns:',len\\(t\\)\\); print\\('grid rows:',len\\(t[0]['anfield'].split\\(chr\\(10\\)\\)\\),'cols:',len\\(t[0]['anfield'].split\\(chr\\(10\\)\\)[0]\\)\\); print\\('last turn piece:',repr\\(t[-1]['piece']\\)\\)\")",
+      "Bash(curl -s http://localhost:8080/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/matches/5)",
+      "Bash(docker volume *)",
+      "Bash(echo \"bot volumes leaked: $?\")",
+      "Bash(docker pull *)",
+      "Bash(curl -s http://localhost:8080/api/bots/30)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d['bot']['status']\\); print\\(\\(d['buildLog'] or ''\\)[:500]\\)\")",
+      "Bash(curl -sf http://localhost:8080/api/players)",
+      "Bash(curl -s http://localhost:8080/api/players)",
+      "Bash(python -c \"import json,sys; [print\\(p['name'], '| bots:', p['bots'], '| best:', p['bestBot'], p['bestRating'] and round\\(p['bestRating']\\), '| W-L:', p['wins'],'-',p['losses']\\) for p in json.load\\(sys.stdin\\)]\")",
+      "Bash(curl -s \"http://localhost:8080/api/players/mohamed\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('player:', d['player']['name'], '| bots:', [b['name'] for b in d['bots']], '| matches:', len\\(d['matches']\\)\\)\")"
+    ]
+  }
+}
