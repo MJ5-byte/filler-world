@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "arena-api",
+      "runtimeExecutable": "C:\\Users\\Computia.ME\\Desktop\\filler-world\\arena\\bin\\api.exe",
+      "runtimeArgs": [],
+      "cwd": "C:\\Users\\Computia.ME\\Desktop\\filler-world\\arena",
+      "env": { "ARENA_AUTH_DEV": "1", "ARENA_ADMIN_LOGINS": "tester" },
+      "port": 8080
+    }
+  ]
+}

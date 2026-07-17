@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { RatingSeries } from '../api'
 
-// Chart-grade series colors, validated for CVD separation and contrast
-// against the app surface (#131926): azure, amber, violet.
-export const SERIES = ['#1e94cf', '#c77a26', '#8d70ea']
+// Chart-grade series colors: azure, amber, violet — the third is the only
+// hue not already claimed by the P1/P2 matchup, kept CVD-distinguishable.
+export const SERIES = ['var(--p1)', 'var(--p2)', 'oklch(0.65 0.14 300)']
 
 const W = 640
 const H = 220

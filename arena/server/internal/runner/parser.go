@@ -46,7 +46,7 @@ func Parse(output string) Result {
 			h, _ := strconv.Atoi(m[2])
 			i++ // skip the column ruler line
 			var rows []string
-			for r := 0; r < h && i+1 < len(lines)+1; r++ {
+			for r := 0; r < h; r++ {
 				i++
 				if i >= len(lines) {
 					break

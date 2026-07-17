@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Link, useNavigate, useOutletContext } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { api } from '../api'
 import type { AppContext } from '../App'
 
@@ -10,9 +10,10 @@ const LANG_HINTS: Record<string, string> = {
   go: 'A single main.go compiled with CGO_ENABLED=0. Stdlib imports only (builds run offline).',
   c: 'A single main.c compiled with gcc -O2 -static. Stdlib only.',
 }
+const LANGS = ['python', 'go', 'c', 'rust', 'binary']
 
 export default function Upload() {
-  const { user, authReady } = useOutletContext<AppContext>()
+  const { user } = useOutletContext<AppContext>()
   const [name, setName] = useState('')
   const [language, setLanguage] = useState('python')
   const [file, setFile] = useState<File | null>(null)
@@ -21,16 +22,6 @@ export default function Upload() {
   const [over, setOver] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const nav = useNavigate()
-
-  if (authReady && !user) {
-    return (
-      <div className="panel center-note">
-        <h1>Upload a bot</h1>
-        <p className="muted">You need an account so your bot has an owner.</p>
-        <Link to="/login"><button>Log in with Reboot01</button></Link>
-      </div>
-    )
-  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,21 +46,6 @@ export default function Upload() {
       <h1>Upload a bot</h1>
       <p className="muted">Uploading as <strong>{user?.login}</strong>.</p>
       <form className="upload" onSubmit={submit}>
-        <label>Bot name
-          <input type="text" value={name} onChange={e => setName(e.target.value)}
-            placeholder="my_destroyer" required pattern="[a-zA-Z0-9_\-]{2,40}" />
-        </label>
-        <label>Language
-          <select value={language} onChange={e => setLanguage(e.target.value)}>
-            <option value="python">Python (source)</option>
-            <option value="rust">Rust (source)</option>
-            <option value="go">Go (source)</option>
-            <option value="c">C (source)</option>
-            <option value="binary">Precompiled Linux binary</option>
-          </select>
-        </label>
-        <p className="muted" style={{ margin: 0 }}>{LANG_HINTS[language]}</p>
-
         <div
           className={'dropzone' + (over ? ' over' : '')}
           onClick={() => fileInput.current?.click()}
@@ -81,13 +57,29 @@ export default function Upload() {
             if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0])
           }}
         >
-          {file ? <strong>{file.name}</strong> : 'Drop your bot file here, or click to browse'}
+          <div className="dropzone-title">{file ? file.name : 'DROP BOT FILE HERE'}</div>
+          <div className="dropzone-sub">{file ? 'click to choose a different file' : 'or click to browse — single source file or a Linux binary'}</div>
           <input ref={fileInput} type="file" hidden
             onChange={e => setFile(e.target.files?.[0] ?? null)} />
         </div>
 
+        <label style={{ marginTop: 6 }}>Language</label>
+        <div className="chip-row" style={{ margin: 0 }}>
+          {LANGS.map(l => (
+            <span key={l} className={`chip ${language === l ? 'on' : ''}`} onClick={() => setLanguage(l)}>
+              {l.toUpperCase()}
+            </span>
+          ))}
+        </div>
+        <p className="muted" style={{ margin: 0 }}>{LANG_HINTS[language]}</p>
+
+        <label>Bot name
+          <input type="text" value={name} onChange={e => setName(e.target.value)}
+            placeholder="my_destroyer" required pattern="[a-zA-Z0-9_\-]{2,40}" />
+        </label>
+
         {error && <div className="error-box">{error}</div>}
-        <button disabled={busy}>{busy ? 'Uploading…' : 'Upload & enter the arena'}</button>
+        <button disabled={busy}>{busy ? 'Deploying…' : 'Deploy bot'}</button>
         <p className="muted" style={{ margin: 0 }}>
           After upload your bot is built/validated in an offline sandbox, then automatically
           queued against every active bot on all maps. Build errors appear on the bot page.

@@ -25,8 +25,6 @@ type BotRef struct {
 
 type MatchOutput struct {
 	Result Result
-	Raw    string
-	Stderr string
 }
 
 // Bots are immutable once built, so each uploaded bot's files are staged into
@@ -52,14 +50,14 @@ func ensureBotVolume(ctx context.Context, cfg config.Config, bot BotRef) (string
 	var stageErr error
 	once.Do(func() {
 		vol := botVolume(bot.ID)
-		if _, err := dockerOut(ctx, "volume", "create", vol); err != nil {
+		if _, err := DockerOut(ctx, "volume", "create", vol); err != nil {
 			stageErr = err
 			return
 		}
 		helper := vol + "-fill"
 		RemoveContainer(helper)
 		defer RemoveContainer(helper)
-		if _, err := dockerOut(ctx, "create", "--name", helper,
+		if _, err := DockerOut(ctx, "create", "--name", helper,
 			"-v", vol+":/staging", cfg.MatchImage, "true"); err != nil {
 			stageErr = err
 			return
@@ -122,7 +120,7 @@ func Run(ctx context.Context, cfg config.Config, matchID int64, botA, botB BotRe
 		"./game_engine", "-f", mapPath, "-p1", pathA, "-p2", pathB,
 		"-t", strconv.Itoa(cfg.EngineTimeout),
 	)
-	if _, err := dockerOut(ctx, createArgs...); err != nil {
+	if _, err := DockerOut(ctx, createArgs...); err != nil {
 		return MatchOutput{}, err
 	}
 
@@ -142,15 +140,10 @@ func Run(ctx context.Context, cfg config.Config, matchID int64, botA, botB BotRe
 	if runCtx.Err() == context.DeadlineExceeded {
 		// CommandContext only kills the docker CLI; make sure the container dies.
 		RemoveContainer(name)
-		return MatchOutput{Raw: stdout.String(), Stderr: stderr.String()},
-			fmt.Errorf("match exceeded wall-clock limit %s", cfg.MatchWallClock)
+		return MatchOutput{}, fmt.Errorf("match exceeded wall-clock limit %s", cfg.MatchWallClock)
 	}
 
-	out := MatchOutput{
-		Result: Parse(stdout.String()),
-		Raw:    stdout.String(),
-		Stderr: stderr.String(),
-	}
+	out := MatchOutput{Result: Parse(stdout.String())}
 	if err != nil && !out.Result.HasScores {
 		return out, fmt.Errorf("game engine failed: %w: %s", err, firstLines(stderr.String(), 5))
 	}

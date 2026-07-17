@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"filler-arena/internal/config"
@@ -114,7 +113,7 @@ func runBuildContainer(ctx context.Context, cfg config.Config, botID int64, imag
 		image,
 	}
 	args = append(args, cmd...)
-	if out, err := dockerCombined(ctx, args...); err != nil {
+	if out, err := runner.DockerOut(ctx, args...); err != nil {
 		return out, err
 	}
 	// Copy to / with a nested prefix: docker cp requires the destination
@@ -122,7 +121,7 @@ func runBuildContainer(ctx context.Context, cfg config.Config, botID int64, imag
 	if err := runner.CopyDirIntoContainer(ctx, name, srcDir, "work/src", "/"); err != nil {
 		return "", err
 	}
-	log, err := dockerCombined(ctx, "start", "-a", name)
+	log, err := runner.DockerOut(ctx, "start", "-a", name)
 	if err != nil {
 		return log, err
 	}
@@ -132,13 +131,4 @@ func runBuildContainer(ctx context.Context, cfg config.Config, botID int64, imag
 		}
 	}
 	return log, nil
-}
-
-func dockerCombined(ctx context.Context, args ...string) (string, error) {
-	c := exec.CommandContext(ctx, "docker", args...)
-	out, err := c.CombinedOutput()
-	if err != nil {
-		return string(out), fmt.Errorf("docker %v: %w: %s", args[0], err, string(out))
-	}
-	return string(out), nil
 }
