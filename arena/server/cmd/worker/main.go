@@ -34,11 +34,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if n, err := queue.MigrateLegacy(ctx, rdb); err != nil {
-		log.Printf("legacy queue migration: %v", err)
-	} else if n > 0 {
-		log.Printf("migrated %d jobs from legacy queue", n)
-	}
 
 	w := &worker.Worker{Cfg: cfg, Pool: pool, RDB: rdb}
 	w.Recover(ctx)

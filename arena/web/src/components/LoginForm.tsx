@@ -1,17 +1,18 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useOutletContext } from 'react-router-dom'
 import { api } from '../api'
-import type { AppContext } from '../App'
 
-export default function Login() {
-  const { refreshUser } = useOutletContext<AppContext>()
+// The AUTH://LOGIN terminal panel. Used standalone inside the landing
+// page's login modal — no route or outlet context of its own, so the
+// caller supplies refreshUser and what to do once a session exists.
+export default function LoginForm({ refreshUser, onSuccess }: {
+  refreshUser: () => void
+  onSuccess: (login: string) => void
+}) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [shake, setShake] = useState(false)
-  const nav = useNavigate()
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,7 +21,7 @@ export default function Login() {
     try {
       const u = await api.login(identifier, password)
       refreshUser()
-      nav(`/players/${u.login}`)
+      onSuccess(u.login)
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err))
       setShake(true)
@@ -30,24 +31,30 @@ export default function Login() {
   }
 
   return (
-    <div className="login-wrap">
-      <form className={'panel login-panel' + (shake ? ' shake' : '')} onSubmit={submit}>
-        <h1 style={{ marginBottom: 4 }}>Welcome back</h1>
-        <p className="muted" style={{ marginTop: 0 }}>
+    <form className={'login-panel' + (shake ? ' shake' : '')} onSubmit={submit}>
+      <div className="login-titlebar">
+        <span className="login-dot" /><span className="login-dot" /><span className="login-dot" />
+        <span className="login-titlebar-label">AUTH://LOGIN</span>
+      </div>
+      <div className="login-body">
+        <div className="login-heading">Welcome back<span className="login-cursor">_</span></div>
+        <p className="muted login-tagline">
           Sign in with your Reboot01 account. Your credentials go straight to the
           school's auth server — the arena only keeps your username.
         </p>
-        <label>Username or email
+        <label className="login-prompt">&gt; USERNAME
           <input type="text" value={identifier} autoFocus required
             onChange={e => setIdentifier(e.target.value)} placeholder="your-login" />
         </label>
-        <label>Password
+        <label className="login-prompt">&gt; PASSWORD
           <input type="password" value={password}
             onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
         </label>
         {error && <div className="error-box">{error}</div>}
-        <button disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      </form>
-    </div>
+        <button disabled={busy} style={{ width: '100%', marginTop: 8 }}>
+          {busy ? 'AUTHENTICATING…' : 'AUTHENTICATE'}
+        </button>
+      </div>
+    </form>
   )
 }

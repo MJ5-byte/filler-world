@@ -26,6 +26,53 @@ export interface Match {
   error: string | null
   createdAt: string
   finishedAt: string | null
+  tournamentId: number | null
+  round: number | null
+  slot: number | null
+}
+
+export interface Tournament {
+  id: number
+  name: string
+  format: string
+  status: string
+  mapName: string | null
+  createdBy: string | null
+  winnerId: number | null
+  winnerName: string | null
+  error: string | null
+  participants: number
+  matchesTotal: number
+  matchesDone: number
+  createdAt: string
+  finishedAt: string | null
+}
+
+export interface TournamentParticipant {
+  botId: number
+  name: string
+  owner: string
+  language: string
+  seed: number
+  rating: number | null
+}
+
+export interface TournamentStanding {
+  botId: number
+  seed: number
+  wins: number
+  losses: number
+  draws: number
+  played: number
+  points: number
+  scoreDiff: number
+}
+
+export interface TournamentDetail {
+  tournament: Tournament
+  participants: TournamentParticipant[]
+  matches: Match[]
+  standings: TournamentStanding[] | null
 }
 
 export interface Turn {
@@ -117,7 +164,6 @@ export const api = {
   bot: (id: number | string) =>
     req<{ bot: Bot; buildLog: string | null; matches: Match[] }>(`/api/bots/${id}`),
   matches: () => req<Match[]>('/api/matches'),
-  match: (id: number | string) => req<Match>(`/api/matches/${id}`),
   replay: (id: number | string) => req<Replay>(`/api/matches/${id}/replay`),
   maps: () => req<GameMap[]>('/api/maps'),
   players: () => req<Player[]>('/api/players'),
@@ -146,6 +192,14 @@ export const api = {
     req<{ deleted: number }>(`/api/admin/bots/${botId}`, { method: 'DELETE' }),
   uploadBot: (form: FormData) =>
     req<{ id: number; status: string }>('/api/bots', { method: 'POST', body: form }),
+  tournaments: () => req<Tournament[]>('/api/tournaments'),
+  tournament: (id: number | string) => req<TournamentDetail>(`/api/tournaments/${id}`),
+  createTournament: (body: { name: string; format: string; botIds: number[]; mapId: number }) =>
+    req<{ id: number; status: string }>('/api/tournaments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   createMatch: (botAId: number, botBId: number, mapId?: number) =>
     req<{ id: number; status: string }>('/api/matches', {
       method: 'POST',

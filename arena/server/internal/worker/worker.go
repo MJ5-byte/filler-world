@@ -17,6 +17,7 @@ import (
 	"filler-arena/internal/elo"
 	"filler-arena/internal/queue"
 	"filler-arena/internal/runner"
+	"filler-arena/internal/tournament"
 )
 
 type Worker struct {
@@ -113,6 +114,26 @@ func (w *Worker) Recover(ctx context.Context) {
 	}
 	if n > 0 {
 		log.Printf("recover: re-enqueued %d unfinished jobs", n)
+	}
+
+	// A crash between a match finishing and its tournament advancing would
+	// stall the bracket forever; re-deriving every running tournament here is
+	// idempotent and unsticks them.
+	rows, err = w.Pool.Query(ctx, `SELECT id FROM tournaments WHERE status='running'`)
+	if err == nil {
+		var ids []int64
+		for rows.Next() {
+			var id int64
+			if rows.Scan(&id) == nil {
+				ids = append(ids, id)
+			}
+		}
+		rows.Close()
+		for _, id := range ids {
+			if err := tournament.Advance(ctx, w.Pool, w.RDB, id); err != nil {
+				log.Printf("recover: advance tournament %d: %v", id, err)
+			}
+		}
 	}
 }
 
@@ -239,14 +260,16 @@ func (w *Worker) handleMatch(ctx context.Context, matchID int64) {
 	var botAID, botBID int64
 	var mapPath string
 	var langA, langB, pathA, pathB string
+	var tournamentID *int64
 	err = w.Pool.QueryRow(ctx, `
-		SELECT ba.id, ba.language, ba.binary_path, bb.id, bb.language, bb.binary_path, m.path
+		SELECT ba.id, ba.language, ba.binary_path, bb.id, bb.language, bb.binary_path, m.path,
+		       mt.tournament_id
 		FROM matches mt
 		JOIN bots ba ON ba.id = mt.bot_a_id
 		JOIN bots bb ON bb.id = mt.bot_b_id
 		JOIN maps m ON m.id = mt.map_id
 		WHERE mt.id = $1`, matchID).
-		Scan(&botAID, &langA, &pathA, &botBID, &langB, &pathB, &mapPath)
+		Scan(&botAID, &langA, &pathA, &botBID, &langB, &pathB, &mapPath, &tournamentID)
 	if err != nil {
 		log.Printf("match %d: load: %v", matchID, err)
 		if _, dberr := w.Pool.Exec(ctx,
@@ -257,8 +280,8 @@ func (w *Worker) handleMatch(ctx context.Context, matchID int64) {
 		return
 	}
 
-	refA := runner.BotRef{ID: botAID, Builtin: langA == "builtin", Path: w.botPath(langA, pathA)}
-	refB := runner.BotRef{ID: botBID, Builtin: langB == "builtin", Path: w.botPath(langB, pathB)}
+	refA := runner.BotRef{ID: botAID, Builtin: langA == "builtin", Path: pathA}
+	refB := runner.BotRef{ID: botBID, Builtin: langB == "builtin", Path: pathB}
 
 	started := time.Now()
 	out, err := runner.Run(ctx, w.Cfg, matchID, refA, refB, mapPath)
@@ -276,6 +299,9 @@ func (w *Worker) handleMatch(ctx context.Context, matchID int64) {
 			matchID, err.Error()); dberr != nil {
 			log.Printf("match %d: record error: %v", matchID, dberr)
 		}
+		// An errored match is still terminal for its bracket: the tournament
+		// must move on (better seed advances) rather than stall.
+		w.advanceTournament(ctx, tournamentID)
 		return
 	}
 
@@ -286,18 +312,25 @@ func (w *Worker) handleMatch(ctx context.Context, matchID int64) {
 			matchID, "persist: "+err.Error()); dberr != nil {
 			log.Printf("match %d: record error: %v", matchID, dberr)
 		}
+		w.advanceTournament(ctx, tournamentID)
 		return
 	}
 	log.Printf("match %d finished in %s: %d - %d (winner %d)",
 		matchID, time.Since(started).Round(time.Millisecond),
 		out.Result.ScoreA, out.Result.ScoreB, out.Result.Winner)
+	w.advanceTournament(ctx, tournamentID)
 }
 
-func (w *Worker) botPath(lang, binaryPath string) string {
-	if lang == "builtin" {
-		return binaryPath // in-image path
+// advanceTournament re-derives a tournament's bracket after one of its
+// matches reached a terminal state. Failures are logged, not fatal: the
+// worker's startup recovery re-advances every running tournament.
+func (w *Worker) advanceTournament(ctx context.Context, tid *int64) {
+	if tid == nil {
+		return
 	}
-	return binaryPath // host dir, copied into the container by the runner
+	if err := tournament.Advance(ctx, w.Pool, w.RDB, *tid); err != nil {
+		log.Printf("tournament %d: advance: %v", *tid, err)
+	}
 }
 
 // persistResult stores turns, final scores, and Elo/ranking updates in one

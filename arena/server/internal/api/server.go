@@ -39,9 +39,10 @@ type Server struct {
 	Pool *pgxpool.Pool
 	RDB  *redis.Client
 
-	uploadLimit *limiter
-	matchLimit  *limiter
-	loginLimit  *limiter
+	uploadLimit  *limiter
+	matchLimit   *limiter
+	loginLimit   *limiter
+	tourneyLimit *limiter
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, rdb *redis.Client) *Server {
@@ -52,6 +53,8 @@ func New(cfg config.Config, pool *pgxpool.Pool, rdb *redis.Client) *Server {
 		uploadLimit: newLimiter(10, 10*time.Minute),
 		matchLimit:  newLimiter(60, 10*time.Minute),
 		loginLimit:  newLimiter(15, 10*time.Minute),
+		// A tournament fans out into up to 120 matches, so keep creation rare.
+		tourneyLimit: newLimiter(5, 10*time.Minute),
 	}
 }
 
@@ -67,6 +70,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/matches", s.listMatches)
 	mux.HandleFunc("GET /api/matches/{id}", s.getMatch)
 	mux.HandleFunc("GET /api/matches/{id}/replay", s.getReplay)
+	mux.HandleFunc("POST /api/tournaments", s.tourneyLimit.middleware(s.requireUser(s.createTournament)))
+	mux.HandleFunc("GET /api/tournaments", s.listTournaments)
+	mux.HandleFunc("GET /api/tournaments/{id}", s.getTournament)
 	mux.HandleFunc("GET /api/leaderboard", s.leaderboard)
 	mux.HandleFunc("GET /api/players", s.listPlayers)
 	mux.HandleFunc("GET /api/players/{name}", s.getPlayer)
@@ -279,26 +285,30 @@ func (s *Server) getBot(w http.ResponseWriter, r *http.Request) {
 // ---- matches ----
 
 type matchRow struct {
-	ID       int64      `json:"id"`
-	BotAID   int64      `json:"botAId"`
-	BotBID   int64      `json:"botBId"`
-	BotAName string     `json:"botAName"`
-	BotBName string     `json:"botBName"`
-	MapName  string     `json:"mapName"`
-	Status   string     `json:"status"`
-	WinnerID *int64     `json:"winnerId"`
-	ScoreA   *int       `json:"scoreA"`
-	ScoreB   *int       `json:"scoreB"`
-	Error    *string    `json:"error"`
-	Created  time.Time  `json:"createdAt"`
-	Finished *time.Time `json:"finishedAt"`
+	ID           int64      `json:"id"`
+	BotAID       int64      `json:"botAId"`
+	BotBID       int64      `json:"botBId"`
+	BotAName     string     `json:"botAName"`
+	BotBName     string     `json:"botBName"`
+	MapName      string     `json:"mapName"`
+	Status       string     `json:"status"`
+	WinnerID     *int64     `json:"winnerId"`
+	ScoreA       *int       `json:"scoreA"`
+	ScoreB       *int       `json:"scoreB"`
+	Error        *string    `json:"error"`
+	Created      time.Time  `json:"createdAt"`
+	Finished     *time.Time `json:"finishedAt"`
+	TournamentID *int64     `json:"tournamentId"`
+	Round        *int       `json:"round"`
+	Slot         *int       `json:"slot"`
 }
 
 func (s *Server) queryMatches(ctx context.Context, where string, args ...any) ([]matchRow, error) {
 	rows, err := s.Pool.Query(ctx, `
 		SELECT mt.id, mt.bot_a_id, mt.bot_b_id, ba.name, bb.name, m.name,
 		       mt.status, mt.winner_id, mt.score_a, mt.score_b, mt.error,
-		       mt.created_at, mt.finished_at
+		       mt.created_at, mt.finished_at,
+		       mt.tournament_id, mt.tournament_round, mt.tournament_slot
 		FROM matches mt
 		JOIN bots ba ON ba.id = mt.bot_a_id
 		JOIN bots bb ON bb.id = mt.bot_b_id
@@ -312,7 +322,7 @@ func (s *Server) queryMatches(ctx context.Context, where string, args ...any) ([
 		var mr matchRow
 		if err := rows.Scan(&mr.ID, &mr.BotAID, &mr.BotBID, &mr.BotAName, &mr.BotBName,
 			&mr.MapName, &mr.Status, &mr.WinnerID, &mr.ScoreA, &mr.ScoreB, &mr.Error,
-			&mr.Created, &mr.Finished); err != nil {
+			&mr.Created, &mr.Finished, &mr.TournamentID, &mr.Round, &mr.Slot); err != nil {
 			return nil, err
 		}
 		out = append(out, mr)

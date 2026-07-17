@@ -12,8 +12,8 @@ import (
 	"strings"
 )
 
-// dockerOut runs a docker CLI command and returns combined output.
-func dockerOut(ctx context.Context, args ...string) (string, error) {
+// DockerOut runs a docker CLI command and returns combined output.
+func DockerOut(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

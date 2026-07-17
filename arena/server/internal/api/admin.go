@@ -14,13 +14,13 @@ import (
 )
 
 type adminOverview struct {
-	QueueBuilds    int64            `json:"queueBuilds"`
-	QueueMatches   int64            `json:"queueMatches"`
-	Bots           map[string]int   `json:"bots"`
-	Matches        map[string]int   `json:"matches"`
-	Finished24h    int              `json:"finished24h"`
-	AvgDurationSec *float64         `json:"avgDurationSec"` // finished, last 24h
-	Players        int              `json:"players"`
+	QueueBuilds    int64          `json:"queueBuilds"`
+	QueueMatches   int64          `json:"queueMatches"`
+	Bots           map[string]int `json:"bots"`
+	Matches        map[string]int `json:"matches"`
+	Finished24h    int            `json:"finished24h"`
+	AvgDurationSec *float64       `json:"avgDurationSec"` // finished, last 24h
+	Players        int            `json:"players"`
 }
 
 func (s *Server) adminOverview(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {

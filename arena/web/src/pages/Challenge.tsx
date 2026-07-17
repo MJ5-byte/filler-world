@@ -2,17 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom'
 import { api, Bot, GameMap } from '../api'
 import type { AppContext } from '../App'
-import LangBadge from '../components/LangBadge'
 
 export default function Challenge() {
-  const { user, authReady } = useOutletContext<AppContext>()
+  const { user } = useOutletContext<AppContext>()
   const [params, setParams] = useSearchParams()
   const [bots, setBots] = useState<Bot[]>([])
   const [maps, setMaps] = useState<GameMap[]>([])
   const [mapId, setMapId] = useState(0)
+  const [oppId, setOppId] = useState(0)
   const [error, setError] = useState('')
   const [queued, setQueued] = useState<{ id: number; vs: string }[]>([])
-  const [busyId, setBusyId] = useState(0)
+  const [busy, setBusy] = useState(false)
 
   const myBotId = Number(params.get('bot')) || 0
 
@@ -31,56 +31,90 @@ export default function Challenge() {
   )
   const myBot = useMemo(() => mine.find(b => b.id === myBotId), [mine, myBotId])
   const opponents = useMemo(() => bots.filter(b => b.id !== myBotId), [bots, myBotId])
+  const opponent = useMemo(() => opponents.find(o => o.id === oppId), [opponents, oppId])
 
-  if (authReady && !user) {
-    return (
-      <div className="panel center-note">
-        <h1>Challenge</h1>
-        <p className="muted">Log in to send your bots into battle.</p>
-        <Link to="/login"><button>Log in with Reboot01</button></Link>
-      </div>
-    )
-  }
-
-  const fight = async (opp: Bot) => {
-    if (!myBot) return
-    setBusyId(opp.id)
+  const fight = async () => {
+    if (!myBot || !opponent) return
+    setBusy(true)
     setError('')
     try {
-      const res = await api.createMatch(myBot.id, opp.id, mapId || undefined)
-      setQueued(q => [{ id: res.id, vs: opp.name }, ...q])
+      const res = await api.createMatch(myBot.id, opponent.id, mapId || undefined)
+      setQueued(q => [{ id: res.id, vs: opponent.name }, ...q])
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e))
     } finally {
-      setBusyId(0)
+      setBusy(false)
     }
   }
 
   return (
     <>
       <h1>Challenge</h1>
-      <div className="panel toolbar">
-        <label className="inline">Fight as
-          <select value={myBotId} onChange={e => setParams(e.target.value === '0' ? {} : { bot: e.target.value })}>
-            <option value={0}>Pick your bot…</option>
-            {mine.map(b => <option key={b.id} value={b.id}>{b.name} ({b.rating?.toFixed(0)})</option>)}
-          </select>
-        </label>
-        <label className="inline">on
-          <select value={mapId} onChange={e => setMapId(Number(e.target.value))}>
-            <option value={0}>Random map</option>
-            {maps.map(m => <option key={m.id} value={m.id}>{m.name} ({m.width}×{m.height})</option>)}
-          </select>
-        </label>
-        {mine.length === 0 && (
+
+      {mine.length === 0 && (
+        <div className="panel toolbar">
           <span className="muted">
             You have no active bots yet — <Link to="/upload">upload one</Link> first.
           </span>
-        )}
-        {mine.length > 0 && !myBot && <span className="muted">Pick your fighter, then choose a victim below.</span>}
+        </div>
+      )}
+
+      <div className="picker-grid">
+        <div>
+          <div className="picker-label">Your bot</div>
+          {mine.map(b => (
+            <div
+              key={b.id}
+              className={`picker-card ${myBotId === b.id ? 'selected p1' : ''}`}
+              onClick={() => setParams({ bot: String(b.id) })}
+            >
+              <div>
+                <div className="picker-card-name">{b.name}</div>
+                <div className="picker-card-meta">{b.language.toUpperCase()} · rating {b.rating?.toFixed(0) ?? '—'}</div>
+              </div>
+              {myBotId === b.id && <div className="picker-card-selected p1">SELECTED</div>}
+            </div>
+          ))}
+        </div>
+        <div>
+          <div className="picker-label">Opponent</div>
+          {opponents.map(o => (
+            <div
+              key={o.id}
+              className={`picker-card ${oppId === o.id ? 'selected p2' : ''}`}
+              onClick={() => setOppId(o.id)}
+            >
+              <div>
+                <div className="picker-card-name">{o.name}</div>
+                <div className="picker-card-meta">{o.language.toUpperCase()} · rating {o.rating?.toFixed(0) ?? '—'}</div>
+              </div>
+              {oppId === o.id && <div className="picker-card-selected p2">SELECTED</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <h2>Map</h2>
+      <div className="map-cards">
+        <div className={`map-card ${mapId === 0 ? 'selected' : ''}`} onClick={() => setMapId(0)}>
+          <div className="map-card-swatch" />
+          <div className="map-card-name">RANDOM</div>
+          <div className="map-card-dims">any seeded map</div>
+        </div>
+        {maps.map(m => (
+          <div key={m.id} className={`map-card ${mapId === m.id ? 'selected' : ''}`} onClick={() => setMapId(m.id)}>
+            <div className="map-card-swatch" />
+            <div className="map-card-name">{m.name.toUpperCase()}</div>
+            <div className="map-card-dims">{m.width} × {m.height}</div>
+          </div>
+        ))}
       </div>
 
       {error && <div className="error-box" style={{ marginTop: 14 }}>{error}</div>}
+
+      <button style={{ marginTop: 24 }} disabled={!myBot || !opponent || busy} onClick={fight}>
+        {busy ? 'Queuing…' : 'Deploy fight'}
+      </button>
 
       {queued.length > 0 && (
         <div className="panel notice-stack" style={{ marginTop: 14 }}>
@@ -92,35 +126,6 @@ export default function Challenge() {
           ))}
         </div>
       )}
-
-      <h2>Opponents</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Bot</th><th>Owner</th><th>Lang</th>
-            <th className="num">Rating</th><th className="num">W–L</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {opponents.map(o => (
-            <tr key={o.id}>
-              <td><Link to={`/bots/${o.id}`}>{o.name}</Link></td>
-              <td><Link to={`/players/${o.owner}`} className="muted">{o.owner}</Link></td>
-              <td><LangBadge lang={o.language} /></td>
-              <td className="num">{o.rating?.toFixed(0) ?? '—'}</td>
-              <td className="num">
-                <span className="result-win">{o.wins ?? 0}</span>–<span className="result-loss">{o.losses ?? 0}</span>
-              </td>
-              <td className="right">
-                <button className="ghost challenge-btn" disabled={!myBot || busyId === o.id}
-                  onClick={() => fight(o)}>
-                  {busyId === o.id ? 'Queuing…' : '⚔ Challenge'}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </>
   )
 }

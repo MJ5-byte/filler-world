@@ -43,9 +43,9 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 
 	maps := []struct {
-		name   string
-		path   string
-		w, h   int
+		name string
+		path string
+		w, h int
 	}{
 		{"map00", "maps/map00", 20, 15},
 		{"map01", "maps/map01", 40, 30},

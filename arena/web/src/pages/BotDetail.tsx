@@ -29,6 +29,8 @@ export default function BotDetail() {
   if (!bot) return <p className="muted">Loading…</p>
 
   const isMine = user != null && user.login === bot.owner
+  const failed = bot.status === 'failed'
+  const stageIdx = { pending: 0, building: 1, active: 2, failed: 2 }[bot.status] ?? -1
 
   return (
     <>
@@ -49,11 +51,37 @@ export default function BotDetail() {
         </div>
       </div>
 
-      {bot.status === 'failed' && buildLog && (
-        <>
-          <h2>Build failed</h2>
-          <div className="log-box">{buildLog}</div>
-        </>
+      {stageIdx >= 0 && bot.language !== 'builtin' && (
+        <div className="panel" style={{ marginTop: 14 }}>
+          <div className="panel-title">Build status</div>
+          <div className="build-stepper">
+            {(['PENDING', 'BUILDING', failed ? 'FAILED' : 'ACTIVE'] as const).map((label, i) => {
+              // pending/building are transient states the bot is "in" (pulse);
+              // active/failed are terminal outcomes of the last step (settled).
+              const state = i < stageIdx ? 'done'
+                : i === stageIdx ? (failed ? 'failed' : bot.status === 'active' ? 'done' : 'current')
+                : ''
+              return (
+                <div className="build-step" key={label}>
+                  <div className="build-step-dot-wrap">
+                    <div className={`build-step-dot ${state}`} />
+                    <div className={`build-step-label ${state}`}>{label}</div>
+                  </div>
+                  {i < 2 && <div className={`build-step-line ${i < stageIdx ? 'done' : ''}`} />}
+                </div>
+              )
+            })}
+          </div>
+          {failed && buildLog && (
+            <div className="build-fail-log">
+              <div className="build-fail-head">
+                <span className="build-fail-badge">FAILED</span>
+                <span className="muted small-num">build error</span>
+              </div>
+              <div className="log-box" style={{ marginTop: 10 }}>{buildLog}</div>
+            </div>
+          )}
+        </div>
       )}
       {(bot.status === 'pending' || bot.status === 'building') && (
         <p className="muted">Building in the sandbox… this page refreshes automatically.</p>

@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	buildKey  = "arena:jobs:build"
-	matchKey  = "arena:jobs:match"
-	legacyKey = "arena:jobs" // pre-split queue; drained on worker start
+	buildKey = "arena:jobs:build"
+	matchKey = "arena:jobs:match"
 )
 
 type JobType string
@@ -77,27 +76,4 @@ func Depths(ctx context.Context, rdb *redis.Client) (builds, matches int64, err 
 	}
 	matches, err = rdb.LLen(ctx, matchKey).Result()
 	return builds, matches, err
-}
-
-// MigrateLegacy moves any jobs left in the old single queue into the split
-// queues. Safe to call on every startup.
-func MigrateLegacy(ctx context.Context, rdb *redis.Client) (int, error) {
-	n := 0
-	for {
-		raw, err := rdb.RPop(ctx, legacyKey).Result()
-		if errors.Is(err, redis.Nil) {
-			return n, nil
-		}
-		if err != nil {
-			return n, err
-		}
-		var job Job
-		if err := json.Unmarshal([]byte(raw), &job); err != nil {
-			continue // drop malformed legacy entries
-		}
-		if err := Enqueue(ctx, rdb, job); err != nil {
-			return n, err
-		}
-		n++
-	}
 }

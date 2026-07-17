@@ -22,8 +22,8 @@ cd arena
 docker compose up -d
 
 # 2. Match sandbox image (game engine + maps + reference robots + python3)
-cd ..\Filler\docker_image
-docker build -f ..\..\arena\sandbox\Dockerfile.match -t filler-arena-match .
+cd sandbox
+docker build -f Dockerfile.match -t filler-arena-match .
 
 # 3. Builder images (builds run with --network=none, so pre-pull them)
 docker pull python:3.12-slim-bookworm
@@ -32,7 +32,7 @@ docker pull gcc:13-bookworm
 docker pull rust:1.79-slim-bookworm
 
 # 4. Server binaries
-cd ..\..\arena\server
+cd ..\server
 go build -o ..\bin\api.exe .\cmd\api
 go build -o ..\bin\worker.exe .\cmd\worker
 
@@ -78,8 +78,30 @@ For frontend development: `cd web; npm run dev` → http://localhost:5173 (proxi
 | `POST /api/matches` | queue a match `{botAId, botBId, mapId?}` (rate-limited) |
 | `GET /api/matches`, `GET /api/matches/:id` | recent list / summary |
 | `GET /api/matches/:id/replay` | full turn-by-turn replay data |
+| `POST /api/tournaments` | start a tournament `{name, format, botIds?, mapId?}` (rate-limited) |
+| `GET /api/tournaments`, `GET /api/tournaments/:id` | list / bracket + standings + matches |
 | `GET /api/leaderboard` | active bots by Elo |
 | `GET /api/maps` | seeded maps |
+
+## Tournaments
+
+Any logged-in player can start a tournament from the **Tournaments** tab:
+pick a format, a map (or rotate through all of them), and either every active
+bot or a hand-picked subset. Participants are seeded by current Elo.
+
+- **Round robin** (max 16 bots): every pairing is queued immediately; the
+  standings table ranks by points (win 1, draw ½), then total score
+  difference, then seed. The winner is crowned when every match finishes.
+- **Single elimination** (max 32 bots): a standard seeded bracket (1 vs 2
+  only possible in the final); short fields give top seeds first-round byes.
+  Since Filler has no tiebreak game, a drawn or errored match advances the
+  better seed. The next round's matches are queued automatically as results
+  come in, and the bracket renders live in the browser.
+
+Bracket advancement is re-derived from stored match rows on every step
+(idempotent), serialized by a per-tournament advisory lock, and re-synced on
+worker startup — a crash can never strand a bracket half-advanced.
+Tournament matches update Elo like any other match.
 
 ## Configuration (env vars, all optional)
 
@@ -138,6 +160,11 @@ its matches (reference robots are protected). Endpoints live under
 - Reference robots (bender, h2_d2, wall_e, terminator) are seeded as `builtin`
   bots owned by `system`; they live inside the match image.
 - `examples/greedy.py` is a working Python bot you can upload to test the pipeline.
+- `examples/solution.rs` is a strong single-file Rust bot (heat-map strategy,
+  beats all reference robots — see `examples/solution.md`); upload it as
+  language `rust`.
+- The game engine, maps, and reference robots live in `sandbox/` and are baked
+  into the match image by `sandbox/Dockerfile.match`.
 - Uploaded Rust/Go/C sources must be a single file using only the standard
   library — build containers have no network access, so dependencies (crates,
   modules) can't be fetched.

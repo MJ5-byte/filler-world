@@ -75,6 +75,37 @@ CREATE TABLE IF NOT EXISTS match_turns (
     PRIMARY KEY (match_id, turn_number)
 );
 
+CREATE TABLE IF NOT EXISTS tournaments (
+    id          BIGSERIAL PRIMARY KEY,
+    name        TEXT NOT NULL,
+    -- round_robin | single_elim
+    format      TEXT NOT NULL,
+    -- running | finished | error
+    status      TEXT NOT NULL DEFAULT 'running',
+    -- NULL = rotate through all maps
+    map_id      BIGINT REFERENCES maps(id),
+    created_by  BIGINT REFERENCES users(id),
+    winner_id   BIGINT REFERENCES bots(id) ON DELETE SET NULL,
+    error       TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS tournament_bots (
+    tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    bot_id        BIGINT NOT NULL REFERENCES bots(id) ON DELETE CASCADE,
+    -- 1 = strongest at creation time (by rating); drives bracket placement
+    seed          INT NOT NULL,
+    PRIMARY KEY (tournament_id, bot_id)
+);
+
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS tournament_id BIGINT REFERENCES tournaments(id) ON DELETE SET NULL;
+-- Bracket coordinates for single_elim: winner of (round r, slot s) meets the
+-- winner of (r, s XOR 1) in (r+1, s/2). NULL for round-robin matches.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS tournament_round INT;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS tournament_slot INT;
+CREATE INDEX IF NOT EXISTS matches_tournament_idx ON matches(tournament_id);
+
 CREATE TABLE IF NOT EXISTS rankings (
     bot_id          BIGINT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE,
     rating          DOUBLE PRECISION NOT NULL DEFAULT 1200,

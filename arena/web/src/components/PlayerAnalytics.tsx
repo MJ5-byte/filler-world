@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { api, PlayerStats } from '../api'
 import RatingChart from './RatingChart'
 
-const AZURE = '#1e94cf'
-const AMBER = '#c77a26'
+const AZURE = 'var(--p1)'
+const AMBER = 'var(--p2)'
 
 function Tile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
