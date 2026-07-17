@@ -285,22 +285,22 @@ func (s *Server) getBot(w http.ResponseWriter, r *http.Request) {
 // ---- matches ----
 
 type matchRow struct {
-	ID       int64      `json:"id"`
-	BotAID   int64      `json:"botAId"`
-	BotBID   int64      `json:"botBId"`
-	BotAName string     `json:"botAName"`
-	BotBName string     `json:"botBName"`
-	MapName  string     `json:"mapName"`
-	Status   string     `json:"status"`
-	WinnerID *int64     `json:"winnerId"`
-	ScoreA   *int       `json:"scoreA"`
-	ScoreB   *int       `json:"scoreB"`
-	Error    *string    `json:"error"`
-	Created  time.Time  `json:"createdAt"`
-	Finished *time.Time `json:"finishedAt"`
-	TournamentID *int64 `json:"tournamentId"`
-	Round        *int   `json:"round"`
-	Slot         *int   `json:"slot"`
+	ID           int64      `json:"id"`
+	BotAID       int64      `json:"botAId"`
+	BotBID       int64      `json:"botBId"`
+	BotAName     string     `json:"botAName"`
+	BotBName     string     `json:"botBName"`
+	MapName      string     `json:"mapName"`
+	Status       string     `json:"status"`
+	WinnerID     *int64     `json:"winnerId"`
+	ScoreA       *int       `json:"scoreA"`
+	ScoreB       *int       `json:"scoreB"`
+	Error        *string    `json:"error"`
+	Created      time.Time  `json:"createdAt"`
+	Finished     *time.Time `json:"finishedAt"`
+	TournamentID *int64     `json:"tournamentId"`
+	Round        *int       `json:"round"`
+	Slot         *int       `json:"slot"`
 }
 
 func (s *Server) queryMatches(ctx context.Context, where string, args ...any) ([]matchRow, error) {

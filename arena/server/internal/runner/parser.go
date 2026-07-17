@@ -16,10 +16,10 @@ type Turn struct {
 }
 
 type Result struct {
-	Turns   []Turn
-	ScoreA  int
-	ScoreB  int
-	Winner  int // 0 = draw, 1, 2
+	Turns     []Turn
+	ScoreA    int
+	ScoreB    int
+	Winner    int // 0 = draw, 1, 2
 	HasScores bool
 }
 
