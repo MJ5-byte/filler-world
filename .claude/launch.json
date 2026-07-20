@@ -8,6 +8,13 @@
       "cwd": "C:\\Users\\محمد\\OneDrive\\Desktop\\filler-world\\arena",
       "env": { "ARENA_AUTH_DEV": "1", "ARENA_ADMIN_LOGINS": "tester" },
       "port": 8080
+    },
+    {
+      "name": "arena-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "C:\\Users\\محمد\\OneDrive\\Desktop\\filler-world\\arena\\web",
+      "port": 5173
     }
   ]
 }

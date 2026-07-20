@@ -492,7 +492,10 @@ button.challenge-btn:hover:not(:disabled) { background: #58c4f414; filter: none;
 .piece-preview {
   font-family: var(--font-mono); font-size: 15px; line-height: 1.2; white-space: pre;
   background: var(--ground); padding: 10px 14px; border: 1px solid var(--line-soft);
-  display: inline-block; letter-spacing: 3px; color: var(--p1-new);
+  letter-spacing: 3px; color: var(--p1-new);
+  /* Pieces range from ~4x3 up to 19x20 depending on the map — a fixed box
+     with internal scroll keeps the sidebar from jumping around as turns play. */
+  width: 100%; height: 160px; overflow: auto; box-sizing: border-box;
 }
 .legend { display: flex; gap: 16px; font-size: 12px; color: var(--dim); flex-wrap: wrap; font-family: var(--font-mono); }
 .legend-grouped { flex-direction: column; gap: 8px; }
