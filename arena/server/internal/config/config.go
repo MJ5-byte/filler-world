@@ -30,6 +30,12 @@ type Config struct {
 	CPULimit    string
 	PidsLimit   int
 
+	// Resource caps for build containers (compilers need more headroom than
+	// a match run, so these default higher than MemoryLimit/CPULimit/PidsLimit).
+	BuildMemoryLimit string
+	BuildCPULimit    string
+	BuildPidsLimit   int
+
 	WorkerConcurrency int
 	// Interval for periodic round-robin re-matching (0 disables).
 	RematchInterval time.Duration
@@ -97,6 +103,9 @@ func Load() Config {
 		MemoryLimit:       env("ARENA_MEMORY_LIMIT", "256m"),
 		CPULimit:          env("ARENA_CPU_LIMIT", "1.0"),
 		PidsLimit:         envInt("ARENA_PIDS_LIMIT", 128),
+		BuildMemoryLimit:  env("ARENA_BUILD_MEMORY_LIMIT", "1g"),
+		BuildCPULimit:     env("ARENA_BUILD_CPU_LIMIT", "2"),
+		BuildPidsLimit:    envInt("ARENA_BUILD_PIDS_LIMIT", 256),
 		WorkerConcurrency: envInt("ARENA_WORKER_CONCURRENCY", defaultConcurrency()),
 		RematchInterval:   envDur("ARENA_REMATCH_INTERVAL", 24*time.Hour),
 		AuthSigninURL:     env("ARENA_AUTH_SIGNIN_URL", "https://learn.reboot01.com/api/auth/signin"),

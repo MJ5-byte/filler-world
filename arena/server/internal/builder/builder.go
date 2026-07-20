@@ -106,10 +106,10 @@ func runBuildContainer(ctx context.Context, cfg config.Config, botID int64, imag
 	args := []string{
 		"create", "--name", name,
 		"--network=none",
-		"--memory", "1g",
-		"--memory-swap", "1g",
-		"--cpus", "2",
-		"--pids-limit", "256",
+		"--memory", cfg.BuildMemoryLimit,
+		"--memory-swap", cfg.BuildMemoryLimit,
+		"--cpus", cfg.BuildCPULimit,
+		"--pids-limit", fmt.Sprint(cfg.BuildPidsLimit),
 		image,
 	}
 	args = append(args, cmd...)

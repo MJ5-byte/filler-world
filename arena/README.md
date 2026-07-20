@@ -109,7 +109,11 @@ Tournament matches update Elo like any other match.
 `ARENA_WEB_DIST`, `ARENA_MATCH_IMAGE`, `ARENA_ENGINE_TIMEOUT` (s, default 10),
 `ARENA_MATCH_WALLCLOCK` (default 5m), `ARENA_BUILD_WALLCLOCK` (default 3m),
 `ARENA_MEMORY_LIMIT` (256m), `ARENA_CPU_LIMIT` (1.0), `ARENA_PIDS_LIMIT` (128),
+`ARENA_BUILD_MEMORY_LIMIT` (1g), `ARENA_BUILD_CPU_LIMIT` (2), `ARENA_BUILD_PIDS_LIMIT` (256),
 `ARENA_WORKER_CONCURRENCY` (2), `ARENA_REMATCH_INTERVAL` (24h, 0 = off).
+
+`ARENA_BUILD_CPU_LIMIT` must not exceed the host's core count (Docker rejects
+`--cpus` above what's available) — set it to `1` on single-core hosts.
 
 Defaults assume both binaries run with `arena/` as the working directory.
 
