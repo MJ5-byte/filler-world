@@ -1,0 +1,89 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  DEPLOY_HOST: 69.55.59.179
+  DEPLOY_USER: root
+  DEPLOY_PATH: /opt/filler-world/arena
+  # `ssh-keyscan -t ed25519 69.55.59.179`, pinned so CI never trust-on-first-use's an unknown host.
+  DEPLOY_HOST_KEY: "69.55.59.179 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAPgia2RqHRL6No1Mns2k5s8yf8XfAuT8iWpydlyApJz"
+
+jobs:
+  deploy:
+    name: Build and deploy to droplet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: arena/server/go.sum
+
+      - name: Build Go binaries (linux/amd64)
+        working-directory: arena/server
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o ../bin/api-linux ./cmd/api
+          GOOS=linux GOARCH=amd64 go build -o ../bin/worker-linux ./cmd/worker
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: arena/web/package-lock.json
+
+      - name: Build frontend
+        working-directory: arena/web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build match sandbox image
+        run: docker build -f arena/sandbox/Dockerfile.match -t filler-arena-match arena/sandbox
+
+      - name: Save match sandbox image
+        run: docker save filler-arena-match:latest | gzip > arena/bin/filler-arena-match.tar.gz
+
+      - name: Set up deploy SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.ARENA_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+
+      - name: Ship artifacts
+        run: |
+          scp arena/bin/api-linux arena/bin/worker-linux arena/bin/filler-arena-match.tar.gz \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/bin/"
+          scp -r arena/web/dist/* "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/web/dist/"
+
+      - name: Deploy (load image, swap binaries, restart services)
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -e
+            cd '"$DEPLOY_PATH"'
+            gunzip -c bin/filler-arena-match.tar.gz | docker load
+            rm bin/filler-arena-match.tar.gz
+            chmod +x bin/api-linux bin/worker-linux
+            systemctl restart filler-arena-api.service filler-arena-worker.service
+          '
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 10); do
+            if curl -sf "http://$DEPLOY_HOST:8080/api/health"; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "API did not become healthy after deploy" >&2
+          exit 1
