@@ -1,17 +1,30 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"filler-arena/internal/queue"
 )
+
+// logAudit records an admin action or other notable platform event.
+// Best-effort: a logging failure must never fail the action it describes.
+func (s *Server) logAudit(ctx context.Context, actor, action, detail string) {
+	if _, err := s.Pool.Exec(ctx,
+		`INSERT INTO audit_log (actor_name, action, detail) VALUES ($1, $2, $3)`,
+		actor, action, detail); err != nil {
+		log.Printf("audit log write failed: %v", err)
+	}
+}
 
 type adminOverview struct {
 	QueueBuilds    int64          `json:"queueBuilds"`
@@ -80,7 +93,7 @@ func (s *Server) adminOverview(w http.ResponseWriter, r *http.Request, _ *Authed
 }
 
 // adminRequeueMatch resets an errored match and puts it back on the queue.
-func (s *Server) adminRequeueMatch(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
+func (s *Server) adminRequeueMatch(w http.ResponseWriter, r *http.Request, actor *AuthedUser) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad id")
@@ -101,11 +114,12 @@ func (s *Server) adminRequeueMatch(w http.ResponseWriter, r *http.Request, _ *Au
 		writeErr(w, http.StatusInternalServerError, "enqueue: "+err.Error())
 		return
 	}
+	s.logAudit(r.Context(), actor.Login, "requeue_match", fmt.Sprintf("match #%d", id))
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "queued"})
 }
 
 // adminSetBotStatus toggles a bot between active and inactive.
-func (s *Server) adminSetBotStatus(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
+func (s *Server) adminSetBotStatus(w http.ResponseWriter, r *http.Request, actor *AuthedUser) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad id")
@@ -133,12 +147,13 @@ func (s *Server) adminSetBotStatus(w http.ResponseWriter, r *http.Request, _ *Au
 		writeErr(w, http.StatusBadRequest, "bot not found or not toggleable (builds in progress / failed bots can't be activated)")
 		return
 	}
+	s.logAudit(r.Context(), actor.Login, "set_bot_status", fmt.Sprintf("bot #%d -> %s", id, req.Status))
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": req.Status})
 }
 
 // adminDeleteBot removes a bot and everything it touched: its matches (turns
 // cascade), its ranking (cascades from bots), and its files on disk.
-func (s *Server) adminDeleteBot(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
+func (s *Server) adminDeleteBot(w http.ResponseWriter, r *http.Request, actor *AuthedUser) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad id")
@@ -146,8 +161,8 @@ func (s *Server) adminDeleteBot(w http.ResponseWriter, r *http.Request, _ *Authe
 	}
 	ctx := r.Context()
 
-	var lang string
-	err = s.Pool.QueryRow(ctx, `SELECT language FROM bots WHERE id=$1`, id).Scan(&lang)
+	var lang, name string
+	err = s.Pool.QueryRow(ctx, `SELECT language, name FROM bots WHERE id=$1`, id).Scan(&lang, &name)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeErr(w, http.StatusNotFound, "bot not found")
 		return
@@ -182,5 +197,156 @@ func (s *Server) adminDeleteBot(w http.ResponseWriter, r *http.Request, _ *Authe
 	}
 	// Best-effort cleanup outside the transaction.
 	_ = os.RemoveAll(filepath.Join(s.Cfg.DataDir, "bots", fmt.Sprint(id)))
+	s.logAudit(ctx, actor.Login, "delete_bot", fmt.Sprintf("bot #%d (%s)", id, name))
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+}
+
+// ---- user management ----
+
+type adminUserRow struct {
+	ID        int64     `json:"id"`
+	Login     string    `json:"login"`
+	Email     *string   `json:"email"`
+	IsAdmin   bool      `json:"isAdmin"`
+	IsBlocked bool      `json:"isBlocked"`
+	Bots      int       `json:"bots"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (s *Server) adminListUsers(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
+	rows, err := s.Pool.Query(r.Context(), `
+		SELECT u.id, u.name, u.email, u.is_admin, u.is_blocked, u.created_at,
+		       count(b.id)::int
+		FROM users u
+		LEFT JOIN bots b ON b.owner_id = u.id
+		GROUP BY u.id
+		ORDER BY u.created_at DESC`)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+	users := []adminUserRow{}
+	for rows.Next() {
+		var u adminUserRow
+		if err := rows.Scan(&u.ID, &u.Login, &u.Email, &u.IsAdmin, &u.IsBlocked, &u.CreatedAt, &u.Bots); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		users = append(users, u)
+	}
+	writeJSON(w, http.StatusOK, users)
+}
+
+// adminSetUserBlocked blocks or unblocks a user. Blocking kills every active
+// session immediately, so it takes effect even if the user is mid-visit.
+func (s *Server) adminSetUserBlocked(w http.ResponseWriter, r *http.Request, actor *AuthedUser) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	var req struct {
+		Blocked bool `json:"blocked"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if id == actor.ID && req.Blocked {
+		writeErr(w, http.StatusBadRequest, "you cannot block yourself")
+		return
+	}
+	ctx := r.Context()
+	var login string
+	err = s.Pool.QueryRow(ctx, `UPDATE users SET is_blocked=$2 WHERE id=$1 RETURNING name`, id, req.Blocked).Scan(&login)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if req.Blocked {
+		if _, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, id); err != nil {
+			writeErr(w, http.StatusInternalServerError, "revoke sessions: "+err.Error())
+			return
+		}
+	}
+	action := "unblock_user"
+	if req.Blocked {
+		action = "block_user"
+	}
+	s.logAudit(ctx, actor.Login, action, login)
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "blocked": req.Blocked})
+}
+
+// adminSetUserAdmin grants or revokes admin access. An admin can't demote
+// themselves — that would risk locking every admin out at once.
+func (s *Server) adminSetUserAdmin(w http.ResponseWriter, r *http.Request, actor *AuthedUser) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	var req struct {
+		IsAdmin bool `json:"isAdmin"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if id == actor.ID && !req.IsAdmin {
+		writeErr(w, http.StatusBadRequest, "you cannot revoke your own admin access")
+		return
+	}
+	ctx := r.Context()
+	var login string
+	err = s.Pool.QueryRow(ctx, `UPDATE users SET is_admin=$2 WHERE id=$1 RETURNING name`, id, req.IsAdmin).Scan(&login)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	action := "revoke_admin"
+	if req.IsAdmin {
+		action = "grant_admin"
+	}
+	s.logAudit(ctx, actor.Login, action, login)
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "isAdmin": req.IsAdmin})
+}
+
+// ---- audit log ----
+
+type auditEntryRow struct {
+	ID        int64     `json:"id"`
+	Actor     string    `json:"actor"`
+	Action    string    `json:"action"`
+	Detail    *string   `json:"detail"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+func (s *Server) adminAuditLog(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
+	rows, err := s.Pool.Query(r.Context(), `
+		SELECT id, actor_name, action, detail, created_at
+		FROM audit_log ORDER BY id DESC LIMIT 200`)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+	entries := []auditEntryRow{}
+	for rows.Next() {
+		var e auditEntryRow
+		if err := rows.Scan(&e.ID, &e.Actor, &e.Action, &e.Detail, &e.CreatedAt); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		entries = append(entries, e)
+	}
+	writeJSON(w, http.StatusOK, entries)
 }

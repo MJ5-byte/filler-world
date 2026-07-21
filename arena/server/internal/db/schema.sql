@@ -9,6 +9,17 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name  TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name   TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS audit_ratio DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin    BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked  BOOLEAN NOT NULL DEFAULT false;
+
+-- Admin actions and other notable platform events, newest first in the UI.
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          BIGSERIAL PRIMARY KEY,
+    actor_name  TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    detail      TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS sessions (
     token       TEXT PRIMARY KEY,

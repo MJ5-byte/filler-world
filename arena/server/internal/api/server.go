@@ -83,6 +83,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/matches/{id}/requeue", s.requireAdmin(s.adminRequeueMatch))
 	mux.HandleFunc("POST /api/admin/bots/{id}/status", s.requireAdmin(s.adminSetBotStatus))
 	mux.HandleFunc("DELETE /api/admin/bots/{id}", s.requireAdmin(s.adminDeleteBot))
+	mux.HandleFunc("GET /api/admin/users", s.requireAdmin(s.adminListUsers))
+	mux.HandleFunc("POST /api/admin/users/{id}/block", s.requireAdmin(s.adminSetUserBlocked))
+	mux.HandleFunc("POST /api/admin/users/{id}/admin", s.requireAdmin(s.adminSetUserAdmin))
+	mux.HandleFunc("GET /api/admin/audit-log", s.requireAdmin(s.adminAuditLog))
 	mux.HandleFunc("/", s.static)
 	return gzipAPI(mux)
 }
@@ -204,6 +208,7 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request, u *AuthedUser
 		fail(http.StatusInternalServerError, "enqueue build: "+err.Error())
 		return
 	}
+	s.logAudit(ctx, u.Login, "upload_bot", fmt.Sprintf("bot #%d %q (%s)", botID, name, lang))
 	writeJSON(w, http.StatusCreated, map[string]any{"id": botID, "status": "pending"})
 }
 

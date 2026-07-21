@@ -33,6 +33,7 @@ type AuthedUser struct {
 	Email      *string  `json:"email"`
 	AuditRatio *float64 `json:"auditRatio"`
 	IsAdmin    bool     `json:"isAdmin"`
+	IsBlocked  bool     `json:"-"`
 }
 
 // remoteUser mirrors the fields we ask the auth provider's GraphQL for.
@@ -148,9 +149,9 @@ func (s *Server) upsertUser(ctx context.Context, ru remoteUser) (AuthedUser, err
 			last_name = EXCLUDED.last_name,
 			audit_ratio = EXCLUDED.audit_ratio,
 			is_admin = users.is_admin OR EXCLUDED.is_admin
-		RETURNING id, name, first_name, last_name, email, audit_ratio, is_admin`,
+		RETURNING id, name, first_name, last_name, email, audit_ratio, is_admin, is_blocked`,
 		ru.Login, ru.Email, ru.FirstName, ru.LastName, ru.AuditRatio, admin).
-		Scan(&u.ID, &u.Login, &u.FirstName, &u.LastName, &u.Email, &u.AuditRatio, &u.IsAdmin)
+		Scan(&u.ID, &u.Login, &u.FirstName, &u.LastName, &u.Email, &u.AuditRatio, &u.IsAdmin, &u.IsBlocked)
 	return u, err
 }
 
@@ -177,6 +178,8 @@ func (s *Server) createSession(ctx context.Context, w http.ResponseWriter, userI
 }
 
 // currentUser resolves the session cookie to a user, or nil when logged out.
+// A blocked user is treated as logged out — their session row is deleted too,
+// so this doubles as cleanup for anyone blocked while their token is still live.
 func (s *Server) currentUser(r *http.Request) (*AuthedUser, error) {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
@@ -184,15 +187,19 @@ func (s *Server) currentUser(r *http.Request) (*AuthedUser, error) {
 	}
 	var u AuthedUser
 	err = s.Pool.QueryRow(r.Context(), `
-		SELECT u.id, u.name, u.first_name, u.last_name, u.email, u.audit_ratio, u.is_admin
+		SELECT u.id, u.name, u.first_name, u.last_name, u.email, u.audit_ratio, u.is_admin, u.is_blocked
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token = $1 AND s.expires_at > now()`, c.Value).
-		Scan(&u.ID, &u.Login, &u.FirstName, &u.LastName, &u.Email, &u.AuditRatio, &u.IsAdmin)
+		Scan(&u.ID, &u.Login, &u.FirstName, &u.LastName, &u.Email, &u.AuditRatio, &u.IsAdmin, &u.IsBlocked)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if u.IsBlocked {
+		_, _ = s.Pool.Exec(r.Context(), `DELETE FROM sessions WHERE token = $1`, c.Value)
+		return nil, nil
 	}
 	return &u, nil
 }
@@ -244,6 +251,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	u, err := s.upsertUser(ctx, ru)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "store user: "+err.Error())
+		return
+	}
+	if u.IsBlocked {
+		writeErr(w, http.StatusForbidden, "this account has been blocked")
 		return
 	}
 	if err := s.createSession(ctx, w, u.ID); err != nil {

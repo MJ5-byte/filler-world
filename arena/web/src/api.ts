@@ -149,6 +149,24 @@ export interface GameMap {
   height: number
 }
 
+export interface AdminUser {
+  id: number
+  login: string
+  email: string | null
+  isAdmin: boolean
+  isBlocked: boolean
+  bots: number
+  createdAt: string
+}
+
+export interface AuditEntry {
+  id: number
+  actor: string
+  action: string
+  detail: string | null
+  createdAt: string
+}
+
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   const body = await res.json().catch(() => null)
@@ -190,6 +208,20 @@ export const api = {
     }),
   adminDeleteBot: (botId: number) =>
     req<{ deleted: number }>(`/api/admin/bots/${botId}`, { method: 'DELETE' }),
+  adminUsers: () => req<AdminUser[]>('/api/admin/users'),
+  adminSetUserBlocked: (userId: number, blocked: boolean) =>
+    req<{ id: number }>(`/api/admin/users/${userId}/block`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blocked }),
+    }),
+  adminSetUserAdmin: (userId: number, isAdmin: boolean) =>
+    req<{ id: number }>(`/api/admin/users/${userId}/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isAdmin }),
+    }),
+  adminAuditLog: () => req<AuditEntry[]>('/api/admin/audit-log'),
   uploadBot: (form: FormData) =>
     req<{ id: number; status: string }>('/api/bots', { method: 'POST', body: form }),
   tournaments: () => req<Tournament[]>('/api/tournaments'),

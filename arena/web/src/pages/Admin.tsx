@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { AdminOverview, api, Bot, Match } from '../api'
+import { AdminOverview, AdminUser, api, AuditEntry, Bot, Match } from '../api'
 import type { AppContext } from '../App'
 import LangBadge from '../components/LangBadge'
+import { relTime } from '../components/MatchTable'
 
 function Tile({ label, value, warn }: { label: string; value: React.ReactNode; warn?: boolean }) {
   return (
@@ -18,6 +19,8 @@ export default function Admin() {
   const [ov, setOv] = useState<AdminOverview | null>(null)
   const [errored, setErrored] = useState<Match[]>([])
   const [bots, setBots] = useState<Bot[]>([])
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -25,6 +28,8 @@ export default function Admin() {
     api.adminOverview().then(setOv).catch(e => setError(String(e)))
     api.matches().then(ms => setErrored(ms.filter(m => m.status === 'error'))).catch(() => {})
     api.bots().then(setBots).catch(() => {})
+    api.adminUsers().then(setUsers).catch(() => {})
+    api.adminAuditLog().then(setAuditLog).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -135,6 +140,65 @@ export default function Admin() {
           ))}
         </tbody>
       </table>
+
+      <h2>Players</h2>
+      <table>
+        <thead>
+          <tr><th>Login</th><th>Email</th><th className="num">Bots</th><th>Joined</th><th>Role</th><th>Access</th><th></th></tr>
+        </thead>
+        <tbody>
+          {users.map(pu => {
+            const self = pu.id === user.id
+            return (
+              <tr key={pu.id}>
+                <td><Link to={`/players/${pu.login}`}>{pu.login}</Link></td>
+                <td className="muted">{pu.email ?? '—'}</td>
+                <td className="num">{pu.bots}</td>
+                <td className="muted">{relTime(pu.createdAt)}</td>
+                <td>{pu.isAdmin ? <span className="badge active">admin</span> : <span className="muted">player</span>}</td>
+                <td>{pu.isBlocked ? <span className="badge error">blocked</span> : <span className="muted">ok</span>}</td>
+                <td className="right admin-actions">
+                  <button className="ghost small" disabled={self}
+                    title={self ? "you can't revoke your own admin access" : undefined}
+                    onClick={() => act(
+                      api.adminSetUserAdmin(pu.id, !pu.isAdmin),
+                      `${pu.login} is ${pu.isAdmin ? 'no longer' : 'now'} an admin.`)}>
+                    {pu.isAdmin ? 'Revoke admin' : 'Make admin'}
+                  </button>
+                  <button className={`ghost small ${pu.isBlocked ? '' : 'danger'}`} disabled={self}
+                    title={self ? "you can't block yourself" : undefined}
+                    onClick={() => {
+                      const next = !pu.isBlocked
+                      if (next && !confirm(`Block ${pu.login}? This logs them out and stops further logins.`)) return
+                      act(api.adminSetUserBlocked(pu.id, next), `${pu.login} ${next ? 'blocked' : 'unblocked'}.`)
+                    }}>
+                    {pu.isBlocked ? 'Unblock' : 'Block'}
+                  </button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      <h2>Activity log</h2>
+      {auditLog.length === 0 ? <p className="muted">Nothing logged yet.</p> : (
+        <table>
+          <thead>
+            <tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            {auditLog.map(e => (
+              <tr key={e.id}>
+                <td className="muted" title={new Date(e.createdAt).toLocaleString()}>{relTime(e.createdAt)}</td>
+                <td>{e.actor}</td>
+                <td className="muted">{e.action.replace(/_/g, ' ')}</td>
+                <td className="muted">{e.detail ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </>
   )
 }
