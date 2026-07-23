@@ -32,7 +32,7 @@ const maxUploadBytes = 32 << 20 // 32 MiB
 
 var nameRe = regexp.MustCompile(`^[a-zA-Z0-9_\-]{2,40}$`)
 
-var validLangs = map[string]bool{"binary": true, "python": true, "go": true, "c": true, "rust": true}
+var validLangs = map[string]bool{"binary": true, "rust": true}
 
 type Server struct {
 	Cfg  config.Config
@@ -156,7 +156,7 @@ func (s *Server) createBot(w http.ResponseWriter, r *http.Request, u *AuthedUser
 		return
 	}
 	if !validLangs[lang] {
-		writeErr(w, http.StatusBadRequest, "language must be one of: binary, python, go, c, rust")
+		writeErr(w, http.StatusBadRequest, "language must be one of: binary, rust")
 		return
 	}
 	file, _, err := r.FormFile("file")

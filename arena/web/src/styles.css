@@ -32,9 +32,6 @@
   --loss: oklch(0.66 0.19 26);
 
   /* language accents */
-  --lang-python: oklch(0.72 0.16 148);
-  --lang-go: oklch(0.75 0.1 200);
-  --lang-c: oklch(0.65 0.01 255);
   --lang-rust: oklch(0.68 0.17 40);
 
   --r: 0px;
@@ -240,10 +237,7 @@ tr.top-row td:first-child { color: var(--p1); }
 /* audit-review statuses (AuditSummary.auditStatus), distinct from bot.status */
 .badge.needs_review { color: var(--p1); border-color: var(--p1); }
 .badge.accepted { color: var(--win); border-color: var(--win); }
-.badge.lang-python { color: var(--lang-python); border-color: var(--lang-python); }
 .badge.lang-rust { color: var(--lang-rust); border-color: var(--lang-rust); }
-.badge.lang-go { color: var(--lang-go); border-color: var(--lang-go); }
-.badge.lang-c { color: var(--lang-c); border-color: var(--lang-c); }
 .badge.lang-binary { color: var(--muted); border-color: var(--line); }
 .badge.lang-builtin { color: var(--dim); border-color: var(--line); }
 

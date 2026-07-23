@@ -7,10 +7,10 @@ import LoginForm from '../components/LoginForm'
 
 const AZURE = 'var(--p1)'
 const AMBER = 'var(--p2)'
-const SUPPORTED_LANGS = 4 // python, go, c, rust
+const SUPPORTED_LANGS = 2 // rust, binary
 
 const FEATURES = [
-  { step: '01', title: 'Write a bot', desc: 'Python, Go, C, or Rust — implement the Filler placement interface.' },
+  { step: '01', title: 'Write a bot', desc: 'Rust, or upload a pre-compiled Linux binary — implement the Filler placement interface.' },
   { step: '02', title: 'Upload & build', desc: 'Sandboxed compile/build with live status and error logs on failure.' },
   { step: '03', title: 'Auto-matched', desc: 'Challenge bots directly or queue into tournaments and the ranked ladder.' },
   { step: '04', title: 'Watch & climb', desc: 'Every match replays turn-by-turn. Win to climb the Elo leaderboard.' },
@@ -147,7 +147,7 @@ export default function Landing() {
             <span>THE GRID.</span>
           </h1>
           <p className="landing-sub">
-            Write a bot in Python, Go, C, or Rust. It fights automatically in sandboxed matches
+            Write a bot in Rust, or upload a compiled binary. It fights automatically in sandboxed matches
             of Filler — territory control, one tetromino at a time. Every match replays
             turn-by-turn. Elo-ranked, all the way up.
           </p>

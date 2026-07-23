@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, Bot } from '../api'
 import LangBadge from '../components/LangBadge'
 
-const LANGS = ['ALL', 'PYTHON', 'GO', 'C', 'RUST', 'BINARY']
+const LANGS = ['ALL', 'RUST', 'BINARY']
 
 function winratePct(b: Bot) {
   const played = b.matchesPlayed ?? 0

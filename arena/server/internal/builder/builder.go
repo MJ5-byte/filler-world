@@ -10,16 +10,11 @@ import (
 	"filler-arena/internal/runner"
 )
 
-const (
-	goImage     = "golang:1.22-bookworm"
-	gccImage    = "gcc:13-bookworm"
-	pythonImage = "python:3.12-slim-bookworm"
-	rustImage   = "rust:1.79-slim-bookworm"
-)
+const rustImage = "rust:1.79-slim-bookworm"
 
 // Images returns every image builds depend on, so they can be pre-pulled
 // (build containers run with --network=none and cannot pull anything).
-func Images() []string { return []string{goImage, gccImage, pythonImage, rustImage} }
+func Images() []string { return []string{rustImage} }
 
 // Build validates/compiles the uploaded source in botDir/src and produces
 // botDir/run (plus support files) that the match container will execute.
@@ -47,30 +42,6 @@ func Build(ctx context.Context, cfg config.Config, botID int64, lang, botDir str
 		}
 		return "", os.Rename(filepath.Join(srcDir, "upload"), filepath.Join(botDir, "run"))
 
-	case "python":
-		log, err := runBuildContainer(ctx, cfg, botID, pythonImage, srcDir, false, botDir,
-			"python3", "-m", "py_compile", "/work/src/upload")
-		if err != nil {
-			return log, fmt.Errorf("python syntax check failed: %w", err)
-		}
-		src, err := os.ReadFile(filepath.Join(srcDir, "upload"))
-		if err != nil {
-			return log, err
-		}
-		if err := os.WriteFile(filepath.Join(botDir, "bot.py"), src, 0o644); err != nil {
-			return log, err
-		}
-		launcher := "#!/bin/sh\nexec python3 \"$(dirname \"$0\")/bot.py\"\n"
-		return log, os.WriteFile(filepath.Join(botDir, "run"), []byte(launcher), 0o755)
-
-	case "go":
-		log, err := runBuildContainer(ctx, cfg, botID, goImage, srcDir, true, botDir,
-			"sh", "-c", "mkdir -p /tmp/out && cp /work/src/upload /tmp/main.go && cd /tmp && CGO_ENABLED=0 GOCACHE=/tmp/gocache GOPATH=/tmp/gopath go build -o /tmp/out/bot main.go")
-		if err != nil {
-			return log, fmt.Errorf("go build failed: %w", err)
-		}
-		return log, nil
-
 	case "rust":
 		// Single-file rustc build: no cargo, no crates — same offline rule as
 		// Go/C. Static-ish glibc binary runs fine in the match image (same
@@ -79,14 +50,6 @@ func Build(ctx context.Context, cfg config.Config, botID int64, lang, botDir str
 			"sh", "-c", "mkdir -p /tmp/out && cp /work/src/upload /tmp/main.rs && rustc -O -o /tmp/out/bot /tmp/main.rs")
 		if err != nil {
 			return log, fmt.Errorf("rust build failed: %w", err)
-		}
-		return log, nil
-
-	case "c":
-		log, err := runBuildContainer(ctx, cfg, botID, gccImage, srcDir, true, botDir,
-			"sh", "-c", "mkdir -p /tmp/out && cp /work/src/upload /tmp/main.c && cd /tmp && gcc -O2 -static -o /tmp/out/bot main.c")
-		if err != nil {
-			return log, fmt.Errorf("c build failed: %w", err)
 		}
 		return log, nil
 

@@ -5,17 +5,14 @@ import type { AppContext } from '../App'
 
 const LANG_HINTS: Record<string, string> = {
   binary: 'A statically linked Linux x86-64 executable that speaks the Filler protocol on stdin/stdout.',
-  python: 'A single Python 3 file. It runs with python3 inside the sandbox — stdlib only.',
   rust: 'A single main.rs compiled with rustc -O. Std only — no cargo, no crates (builds run offline).',
-  go: 'A single main.go compiled with CGO_ENABLED=0. Stdlib imports only (builds run offline).',
-  c: 'A single main.c compiled with gcc -O2 -static. Stdlib only.',
 }
-const LANGS = ['python', 'go', 'c', 'rust', 'binary']
+const LANGS = ['rust', 'binary']
 
 export default function Upload() {
   const { user } = useOutletContext<AppContext>()
   const [name, setName] = useState('')
-  const [language, setLanguage] = useState('python')
+  const [language, setLanguage] = useState('rust')
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -81,8 +78,9 @@ export default function Upload() {
         {error && <div className="error-box">{error}</div>}
         <button disabled={busy}>{busy ? 'Deploying…' : 'Deploy bot'}</button>
         <p className="muted" style={{ margin: 0 }}>
-          After upload your bot is built/validated in an offline sandbox, then automatically
-          queued against every active bot on all maps. Build errors appear on the bot page.
+          After upload your bot is built in an offline sandbox, then automatically played
+          through a set of required matches for review. Once accepted, challenge other bots
+          to start climbing the leaderboard. Build errors appear on the bot page.
         </p>
       </form>
     </>

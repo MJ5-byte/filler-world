@@ -21,14 +21,11 @@ turn-by-turn replay you can scrub through in the browser.
 cd arena
 docker compose up -d
 
-# 2. Match sandbox image (game engine + maps + reference robots + python3)
+# 2. Match sandbox image (game engine + maps + reference robots)
 cd sandbox
 docker build -f Dockerfile.match -t filler-arena-match .
 
-# 3. Builder images (builds run with --network=none, so pre-pull them)
-docker pull python:3.12-slim-bookworm
-docker pull golang:1.22-bookworm
-docker pull gcc:13-bookworm
+# 3. Builder image (builds run with --network=none, so pre-pull it)
 docker pull rust:1.79-slim-bookworm
 
 # 4. Server binaries
@@ -55,11 +52,11 @@ For frontend development: `cd web; npm run dev` → http://localhost:5173 (proxi
 ## How a bot enters the arena
 
 1. `POST /api/bots` (multipart: name, owner, language, file) stores the upload
-   under `data/bots/<id>/src/` and queues a **build job**.
-2. The worker builds/validates it in a network-disabled container
-   (python: syntax check, rust: `rustc -O` std-only, go: `go build` stdlib-only,
-   c: `gcc -static`, binary: stored as-is). Failures land in the bot's
-   `build_log`, visible on its page.
+   under `data/bots/<id>/src/` and queues a **build job**. Only `rust`
+   (single-file, compiled with `rustc -O`, std-only) and `binary` (a
+   pre-compiled Linux executable, checked for an ELF header) are accepted.
+2. The worker builds/validates it in a network-disabled container. Failures
+   land in the bot's `build_log`, visible on its page.
 3. On a successful build the bot enters **audit**: the worker automatically
    plays it 5 games each (sides alternating) against `wall_e`/map00,
    `h2_d2`/map01, and `bender`/map02, requiring ≥4/5 wins on every one, plus
@@ -173,14 +170,13 @@ its matches (reference robots are protected). Endpoints live under
 
 - Reference robots (bender, h2_d2, wall_e, terminator) are seeded as `builtin`
   bots owned by `system`; they live inside the match image.
-- `examples/greedy.py` is a working Python bot you can upload to test the pipeline.
 - `examples/solution.rs` is a strong single-file Rust bot (heat-map strategy,
   beats all reference robots — see `examples/solution.md`); upload it as
-  language `rust`.
+  language `rust` to test the pipeline.
 - The game engine, maps, and reference robots live in `sandbox/` and are baked
   into the match image by `sandbox/Dockerfile.match`.
-- Uploaded Rust/Go/C sources must be a single file using only the standard
-  library — build containers have no network access, so dependencies (crates,
-  modules) can't be fetched.
+- Uploaded Rust sources must be a single file using only the standard
+  library — build containers have no network access, so dependencies (crates)
+  can't be fetched.
 - The worker re-runs a full round robin every `ARENA_REMATCH_INTERVAL` to keep
   ratings fresh.

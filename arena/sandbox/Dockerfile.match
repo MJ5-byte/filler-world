@@ -1,10 +1,7 @@
 # Match sandbox image: game engine + maps + reference robots only.
 # User bots are copied in per-match by the worker (docker cp), never baked in.
+# Only rust/binary uploads are accepted, so no language runtime is needed here.
 FROM debian:bookworm-slim
-
-# python3 so uploaded Python bots can run; nothing else.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 && \
-    rm -rf /var/lib/apt/lists/*
 
 COPY maps               /filler/maps
 COPY linux_robots       /filler/robots
