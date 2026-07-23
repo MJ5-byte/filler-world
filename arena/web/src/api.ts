@@ -167,6 +167,48 @@ export interface AuditEntry {
   createdAt: string
 }
 
+export interface AuditGate { wins: number; losses: number; opponent: string }
+export interface AuditGates { map00: AuditGate; map01: AuditGate; map02: AuditGate; bonus: AuditGate }
+export interface AuditSummary {
+  botId: number
+  botName: string
+  owner: string
+  language: string
+  auditStatus: 'running' | 'needs_review' | 'accepted' | 'rejected'
+  automatedPassed: boolean | null
+  gates: AuditGates
+  createdAt: string
+  updatedAt: string
+}
+export interface AuditGameResult {
+  gate: string        // "map00" | "map01" | "map02" | "bonus"
+  opponent: string
+  map: string
+  studentSide: 1 | 2
+  scoreStudent: number
+  scoreOpponent: number
+  won: boolean
+}
+export interface AuditDetail extends AuditSummary {
+  games: AuditGameResult[]
+  checklist: Record<string, boolean>
+  notes: string | null
+  reviewer: string | null
+  decidedAt: string | null
+  automatedError: string | null
+  buildLog: string | null
+  source: string | null
+}
+export interface DBTable { name: string; rows: number }
+export interface DBQueryResult {
+  columns: string[]
+  rows: Record<string, unknown>[]
+  truncated?: boolean
+  rowCount?: number
+  limit?: number
+  offset?: number
+}
+
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   const body = await res.json().catch(() => null)
@@ -222,6 +264,29 @@ export const api = {
       body: JSON.stringify({ isAdmin }),
     }),
   adminAuditLog: () => req<AuditEntry[]>('/api/admin/audit-log'),
+  adminAudits: () => req<AuditSummary[]>('/api/admin/audits'),
+  adminAuditDetail: (botId: number) => req<AuditDetail>(`/api/admin/audits/${botId}`),
+  adminSaveChecklist: (botId: number, checklist: Record<string, boolean>) =>
+    req<{ ok: boolean }>(`/api/admin/audits/${botId}/checklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checklist }),
+    }),
+  adminDecideAudit: (botId: number, decision: 'accept' | 'reject', notes: string) =>
+    req<{ botId: number; decision: string; botStatus: string }>(`/api/admin/audits/${botId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, notes }),
+    }),
+  adminDBTables: () => req<DBTable[]>('/api/admin/db/tables'),
+  adminDBTableRows: (table: string, limit = 50, offset = 0) =>
+    req<DBQueryResult>(`/api/admin/db/tables/${encodeURIComponent(table)}?limit=${limit}&offset=${offset}`),
+  adminDBQuery: (sql: string) =>
+    req<DBQueryResult>('/api/admin/db/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql }),
+    }),
   uploadBot: (form: FormData) =>
     req<{ id: number; status: string }>('/api/bots', { method: 'POST', body: form }),
   tournaments: () => req<Tournament[]>('/api/tournaments'),

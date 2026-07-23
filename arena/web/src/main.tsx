@@ -14,6 +14,8 @@ import Challenge from './pages/Challenge'
 import Tournaments from './pages/Tournaments'
 import TournamentDetail from './pages/TournamentDetail'
 import Admin from './pages/Admin'
+import AdminAuditDetail from './pages/AdminAuditDetail'
+import AdminDatabase from './pages/AdminDatabase'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -35,6 +37,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/tournaments" element={<Tournaments />} />
           <Route path="/tournaments/:id" element={<TournamentDetail />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/audits/:botId" element={<AdminAuditDetail />} />
+          <Route path="/admin/database" element={<AdminDatabase />} />
         </Route>
       </Routes>
     </BrowserRouter>

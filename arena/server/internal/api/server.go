@@ -87,6 +87,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/admin/users/{id}/block", s.requireAdmin(s.adminSetUserBlocked))
 	mux.HandleFunc("POST /api/admin/users/{id}/admin", s.requireAdmin(s.adminSetUserAdmin))
 	mux.HandleFunc("GET /api/admin/audit-log", s.requireAdmin(s.adminAuditLog))
+	mux.HandleFunc("GET /api/admin/audits", s.requireAdmin(s.adminListAudits))
+	mux.HandleFunc("GET /api/admin/audits/{id}", s.requireAdmin(s.adminGetAudit))
+	mux.HandleFunc("POST /api/admin/audits/{id}/checklist", s.requireAdmin(s.adminSaveAuditChecklist))
+	mux.HandleFunc("POST /api/admin/audits/{id}/decide", s.requireAdmin(s.adminDecideAudit))
+	mux.HandleFunc("GET /api/admin/db/tables", s.requireAdmin(s.adminDBTables))
+	mux.HandleFunc("GET /api/admin/db/tables/{table}", s.requireAdmin(s.adminDBTableRows))
+	mux.HandleFunc("POST /api/admin/db/query", s.requireAdmin(s.adminDBQuery))
 	mux.HandleFunc("/", s.static)
 	return gzipAPI(mux)
 }

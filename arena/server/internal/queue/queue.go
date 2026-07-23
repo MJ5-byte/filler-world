@@ -12,6 +12,7 @@ import (
 
 const (
 	buildKey = "arena:jobs:build"
+	auditKey = "arena:jobs:audit"
 	matchKey = "arena:jobs:match"
 )
 
@@ -19,6 +20,7 @@ type JobType string
 
 const (
 	JobBuild JobType = "build"
+	JobAudit JobType = "audit"
 	JobMatch JobType = "match"
 )
 
@@ -37,10 +39,14 @@ func Connect(ctx context.Context, addr string) (*redis.Client, error) {
 }
 
 func keyFor(t JobType) string {
-	if t == JobBuild {
+	switch t {
+	case JobBuild:
 		return buildKey
+	case JobAudit:
+		return auditKey
+	default:
+		return matchKey
 	}
-	return matchKey
 }
 
 func Enqueue(ctx context.Context, rdb *redis.Client, job Job) error {
@@ -51,10 +57,11 @@ func Enqueue(ctx context.Context, rdb *redis.Client, job Job) error {
 	return rdb.LPush(ctx, keyFor(job.Type), b).Err()
 }
 
-// Dequeue blocks up to timeout. Builds take strict priority over matches so a
-// fresh upload never waits behind a long match backlog.
+// Dequeue blocks up to timeout. Priority is build > audit > match: a fresh
+// upload never waits behind a long match backlog, and audits (which gate a
+// bot joining the ladder) still cut ahead of the general match queue.
 func Dequeue(ctx context.Context, rdb *redis.Client, timeout time.Duration) (Job, bool, error) {
-	res, err := rdb.BRPop(ctx, timeout, buildKey, matchKey).Result()
+	res, err := rdb.BRPop(ctx, timeout, buildKey, auditKey, matchKey).Result()
 	if errors.Is(err, redis.Nil) {
 		return Job{}, false, nil
 	}

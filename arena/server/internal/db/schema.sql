@@ -125,3 +125,27 @@ CREATE TABLE IF NOT EXISTS rankings (
     draws           INT NOT NULL DEFAULT 0,
     matches_played  INT NOT NULL DEFAULT 0
 );
+
+-- Automated + manual review gate a bot must pass before joining the ladder.
+CREATE TABLE IF NOT EXISTS bot_audits (
+    bot_id            BIGINT PRIMARY KEY REFERENCES bots(id) ON DELETE CASCADE,
+    -- running | needs_review | accepted | rejected
+    status            TEXT NOT NULL DEFAULT 'running',
+    automated_passed  BOOLEAN,
+    automated_error   TEXT,
+    gate_map00_wins   INT NOT NULL DEFAULT 0,   -- vs wall_e
+    gate_map00_losses INT NOT NULL DEFAULT 0,
+    gate_map01_wins   INT NOT NULL DEFAULT 0,   -- vs h2_d2
+    gate_map01_losses INT NOT NULL DEFAULT 0,
+    gate_map02_wins   INT NOT NULL DEFAULT 0,   -- vs bender
+    gate_map02_losses INT NOT NULL DEFAULT 0,
+    bonus_wins        INT NOT NULL DEFAULT 0,   -- vs terminator, informational only, does not gate
+    bonus_losses      INT NOT NULL DEFAULT 0,
+    games             JSONB,              -- [{"gate":"map00","opponent":"wall_e","map":"map00","studentSide":1,"scoreStudent":50,"scoreOpponent":30,"won":true}, ...]
+    checklist         JSONB,              -- manual rubric checkboxes, written by the API layer (not you)
+    reviewer          TEXT,
+    notes             TEXT,
+    decided_at        TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);

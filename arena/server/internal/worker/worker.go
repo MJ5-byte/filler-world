@@ -58,6 +58,8 @@ func (w *Worker) process(ctx context.Context, id int, job queue.Job) {
 	switch job.Type {
 	case queue.JobBuild:
 		w.handleBuild(ctx, job.BotID)
+	case queue.JobAudit:
+		w.handleAudit(ctx, job.BotID)
 	case queue.JobMatch:
 		w.handleMatch(ctx, job.MatchID)
 	default:
@@ -108,6 +110,30 @@ func (w *Worker) Recover(ctx context.Context) {
 		rows.Close()
 		for _, id := range ids {
 			if queue.Enqueue(ctx, w.RDB, queue.Job{Type: queue.JobMatch, MatchID: id}) == nil {
+				n++
+			}
+		}
+	}
+
+	// Bots stuck in 'auditing' either never had their audit job picked up, or
+	// the worker died mid-run. Re-running is idempotent (it just overwrites
+	// the bot_audits row), so it's safe to re-enqueue both cases; bots already
+	// awaiting a human ('needs_review') must not be re-audited out from under
+	// the reviewer.
+	rows, err = w.Pool.Query(ctx, `
+		SELECT id FROM bots WHERE status='auditing'
+		AND id NOT IN (SELECT bot_id FROM bot_audits WHERE status='needs_review')`)
+	if err == nil {
+		var ids []int64
+		for rows.Next() {
+			var id int64
+			if rows.Scan(&id) == nil {
+				ids = append(ids, id)
+			}
+		}
+		rows.Close()
+		for _, id := range ids {
+			if queue.Enqueue(ctx, w.RDB, queue.Job{Type: queue.JobAudit, BotID: id}) == nil {
 				n++
 			}
 		}
@@ -165,19 +191,15 @@ func (w *Worker) handleBuild(ctx context.Context, botID int64) {
 	}
 
 	_, err = w.Pool.Exec(ctx,
-		`UPDATE bots SET status='active', build_log=$2 WHERE id=$1`, botID, buildLog)
+		`UPDATE bots SET status='auditing', build_log=$2 WHERE id=$1`, botID, buildLog)
 	if err != nil {
 		log.Printf("build %d: activate: %v", botID, err)
 		return
 	}
-	if _, err := w.Pool.Exec(ctx,
-		`INSERT INTO rankings (bot_id) VALUES ($1) ON CONFLICT (bot_id) DO NOTHING`, botID); err != nil {
-		log.Printf("build %d: init ranking: %v", botID, err)
-	}
-	log.Printf("build %d: bot active", botID)
+	log.Printf("build %d: bot built, entering audit", botID)
 
-	if err := w.ScheduleRoundRobin(ctx, botID); err != nil {
-		log.Printf("build %d: schedule matches: %v", botID, err)
+	if err := queue.Enqueue(ctx, w.RDB, queue.Job{Type: queue.JobAudit, BotID: botID}); err != nil {
+		log.Printf("build %d: schedule audit: %v", botID, err)
 	}
 }
 

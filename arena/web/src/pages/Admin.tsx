@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { AdminOverview, AdminUser, api, AuditEntry, Bot, Match } from '../api'
+import { AdminOverview, AdminUser, api, AuditEntry, AuditSummary, Bot, Match } from '../api'
 import type { AppContext } from '../App'
 import LangBadge from '../components/LangBadge'
 import { relTime } from '../components/MatchTable'
@@ -21,6 +21,7 @@ export default function Admin() {
   const [bots, setBots] = useState<Bot[]>([])
   const [users, setUsers] = useState<AdminUser[]>([])
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
+  const [audits, setAudits] = useState<AuditSummary[]>([])
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -30,6 +31,7 @@ export default function Admin() {
     api.bots().then(setBots).catch(() => {})
     api.adminUsers().then(setUsers).catch(() => {})
     api.adminAuditLog().then(setAuditLog).catch(() => {})
+    api.adminAudits().then(setAudits).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -180,6 +182,46 @@ export default function Admin() {
           })}
         </tbody>
       </table>
+
+      <h2>Bot Audits</h2>
+      {audits.length === 0 ? <p className="muted">Nothing awaiting audit.</p> : (
+        <table>
+          <thead>
+            <tr>
+              <th>Bot</th><th>Owner</th><th>Lang</th><th>Status</th>
+              <th className="num">map00</th><th className="num">map01</th><th className="num">map02</th><th className="num">bonus</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {audits.map(a => (
+              <tr key={a.botId}>
+                <td><Link to={`/bots/${a.botId}`}>{a.botName}</Link></td>
+                <td className="muted">{a.owner}</td>
+                <td><LangBadge lang={a.language} /></td>
+                <td><span className={`badge ${a.auditStatus}`}>{a.auditStatus.replace('_', ' ')}</span></td>
+                {(['map00', 'map01', 'map02', 'bonus'] as const).map(g => {
+                  const gate = a.gates[g]
+                  return (
+                    <td className="num" key={g}>
+                      <span className={gate.wins >= 4 ? 'result-win' : 'result-loss'}>{gate.wins}/{gate.losses}</span>
+                    </td>
+                  )
+                })}
+                <td className="right">
+                  <Link to={`/admin/audits/${a.botId}`}><button className="ghost small">Review</button></Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h2>Database</h2>
+      <p className="muted">
+        Browse tables and run read-only SQL against the arena database.{' '}
+        <Link to="/admin/database">Open database panel →</Link>
+      </p>
 
       <h2>Activity log</h2>
       {auditLog.length === 0 ? <p className="muted">Nothing logged yet.</p> : (
