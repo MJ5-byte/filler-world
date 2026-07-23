@@ -60,7 +60,17 @@ For frontend development: `cd web; npm run dev` → http://localhost:5173 (proxi
    (python: syntax check, rust: `rustc -O` std-only, go: `go build` stdlib-only,
    c: `gcc -static`, binary: stored as-is). Failures land in the bot's
    `build_log`, visible on its page.
-3. On success the bot goes `active` and one match per (active bot × map) is queued.
+3. On a successful build the bot enters **audit**: the worker automatically
+   plays it 5 games each (sides alternating) against `wall_e`/map00,
+   `h2_d2`/map01, and `bender`/map02, requiring ≥4/5 wins on every one, plus
+   an informational bonus run vs `terminator`. Clearing all three required
+   gates moves it to `needs_review`; failing any of them auto-rejects it, no
+   human needed. A human admin reviews the manual rubric (tests, code
+   quality, visualizer bonus — none of that is automatable from a single
+   uploaded file) and accepts or rejects it from `/admin/audits/:id`.
+   Accepting makes the bot `active` and gives it a leaderboard entry at the
+   default rating — it does **not** auto-queue any matches. From there the
+   owner has to actively challenge other bots to start building a record.
 4. Match jobs run `game_engine` inside `filler-arena-match` with:
    `--network=none --read-only --memory 256m --cpus 1 --pids-limit 128 --cap-drop ALL`,
    bot files streamed in via `docker cp` (no host mounts), plus a wall-clock kill

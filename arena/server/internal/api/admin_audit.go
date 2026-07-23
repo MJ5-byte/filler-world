@@ -1,11 +1,9 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,8 +11,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-
-	"filler-arena/internal/queue"
 )
 
 // ---- bot audit review ----
@@ -295,14 +291,14 @@ func (s *Server) adminDecideAudit(w http.ResponseWriter, r *http.Request, actor 
 	}
 
 	if req.Decision == "accept" {
+		// Accepting only makes the bot eligible: it joins the leaderboard at
+		// the default rating with zero games played. No matches are
+		// auto-scheduled — the owner has to actively challenge other bots to
+		// start building a record, same as any other active bot.
 		if _, err := s.Pool.Exec(ctx,
 			`INSERT INTO rankings (bot_id) VALUES ($1) ON CONFLICT (bot_id) DO NOTHING`, botID); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
-		}
-		if err := s.schedulePlacementMatches(ctx, botID); err != nil {
-			// Non-critical follow-up: the accept itself already succeeded.
-			log.Printf("accept bot %d: schedule placement matches: %v", botID, err)
 		}
 	}
 
@@ -319,58 +315,4 @@ func (s *Server) adminDecideAudit(w http.ResponseWriter, r *http.Request, actor 
 		"decision":  req.Decision,
 		"botStatus": newBotStatus,
 	})
-}
-
-// schedulePlacementMatches queues one match per other active bot, rotating
-// through the small/medium maps, mirroring worker.ScheduleRoundRobin. It's
-// reimplemented here (rather than imported) since it's pure SQL + a Redis
-// enqueue with no Docker/runner involvement.
-func (s *Server) schedulePlacementMatches(ctx context.Context, botID int64) error {
-	rows, err := s.Pool.Query(ctx,
-		`SELECT id FROM bots WHERE status='active' AND id <> $1 ORDER BY id`, botID)
-	if err != nil {
-		return err
-	}
-	var opponents []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		opponents = append(opponents, id)
-	}
-	rows.Close()
-
-	var mapIDs []int64
-	mrows, err := s.Pool.Query(ctx, `SELECT id FROM maps WHERE width * height <= 1200 ORDER BY id`)
-	if err != nil {
-		return err
-	}
-	for mrows.Next() {
-		var id int64
-		if err := mrows.Scan(&id); err == nil {
-			mapIDs = append(mapIDs, id)
-		}
-	}
-	mrows.Close()
-	if len(mapIDs) == 0 {
-		return nil
-	}
-
-	for i, opp := range opponents {
-		var matchID int64
-		err := s.Pool.QueryRow(ctx, `
-			INSERT INTO matches (bot_a_id, bot_b_id, map_id, status)
-			VALUES ($1, $2, $3, 'queued') RETURNING id`,
-			botID, opp, mapIDs[i%len(mapIDs)]).Scan(&matchID)
-		if err != nil {
-			log.Printf("schedule placement match bot %d vs %d: %v", botID, opp, err)
-			continue
-		}
-		if err := queue.Enqueue(ctx, s.RDB, queue.Job{Type: queue.JobMatch, MatchID: matchID}); err != nil {
-			log.Printf("schedule placement match bot %d vs %d: enqueue: %v", botID, opp, err)
-		}
-	}
-	return nil
 }

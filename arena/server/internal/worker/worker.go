@@ -203,57 +203,6 @@ func (w *Worker) handleBuild(ctx context.Context, botID int64) {
 	}
 }
 
-// ScheduleRoundRobin queues one placement match per other active bot,
-// rotating through the maps so each map still gets coverage without the
-// full opponents×maps explosion (which floods the queue when several
-// people upload at once).
-func (w *Worker) ScheduleRoundRobin(ctx context.Context, botID int64) error {
-	rows, err := w.Pool.Query(ctx,
-		`SELECT id FROM bots WHERE status='active' AND id <> $1 ORDER BY id`, botID)
-	if err != nil {
-		return err
-	}
-	var opponents []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		opponents = append(opponents, id)
-	}
-	rows.Close()
-
-	// Placement runs on small/medium maps only: 100×100 games take 30s-5min
-	// each and would stall the queue when several bots are uploaded together.
-	// The big map is still exercised by explicit challenges and the periodic
-	// rematch.
-	var mapIDs []int64
-	mrows, err := w.Pool.Query(ctx,
-		`SELECT id FROM maps WHERE width * height <= 1200 ORDER BY id`)
-	if err != nil {
-		return err
-	}
-	for mrows.Next() {
-		var id int64
-		if err := mrows.Scan(&id); err == nil {
-			mapIDs = append(mapIDs, id)
-		}
-	}
-	mrows.Close()
-	if len(mapIDs) == 0 {
-		return nil
-	}
-
-	for i, opp := range opponents {
-		if err := w.EnqueueMatch(ctx, botID, opp, mapIDs[i%len(mapIDs)]); err != nil {
-			return err
-		}
-	}
-	log.Printf("scheduled %d placement matches for bot %d", len(opponents), botID)
-	return nil
-}
-
 func (w *Worker) EnqueueMatch(ctx context.Context, botA, botB, mapID int64) error {
 	var matchID int64
 	err := w.Pool.QueryRow(ctx, `
