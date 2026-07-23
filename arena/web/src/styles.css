@@ -235,6 +235,7 @@ tr.top-row td:first-child { color: var(--p1); }
 .badge.auditing { color: var(--p1); border-color: var(--p1); }
 .badge.rejected { color: var(--loss); border-color: var(--loss); }
 /* audit-review statuses (AuditSummary.auditStatus), distinct from bot.status */
+.badge.awaiting_submit { color: var(--p1); border-color: var(--p1); }
 .badge.needs_review { color: var(--p1); border-color: var(--p1); }
 .badge.accepted { color: var(--win); border-color: var(--win); }
 .badge.lang-rust { color: var(--lang-rust); border-color: var(--lang-rust); }
@@ -746,17 +747,6 @@ button.challenge-btn:hover:not(:disabled) { background: #58c4f414; filter: none;
 }
 
 /* ---------- admin: audits & database ---------- */
-.checklist-group { margin-bottom: 18px; }
-.checklist-group:last-child { margin-bottom: 0; }
-.checklist-item {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 6px 0; font-family: var(--font-body); font-size: 13px; color: var(--ink);
-  cursor: pointer;
-}
-.checklist-item input[type='checkbox'] { margin-top: 3px; accent-color: var(--p1); flex-shrink: 0; }
-.checklist-item input[type='checkbox']:disabled { cursor: default; }
-.checklist-item.disabled, .checklist-item:has(input:disabled) { cursor: default; color: var(--muted); }
-.bonus-gate-note { font-size: 11px; color: var(--dim); font-family: var(--font-mono); margin: 4px 0 0 24px; }
 
 textarea {
   background: var(--surface);

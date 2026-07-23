@@ -4,41 +4,6 @@ import { api, AuditDetail } from '../api'
 import type { AppContext } from '../App'
 import LangBadge from '../components/LangBadge'
 
-const CHECKLIST_GROUPS: { title: string; items: { key: string; label: string }[] }[] = [
-  {
-    title: 'Unit Tests',
-    items: [
-      { key: 'unitTestsPass', label: 'Do all tests pass without errors?' },
-      {
-        key: 'unitTestsInputParsing',
-        label: 'Are there specific tests for Input Parsing (e.g., verifying the robot correctly reads the Anfield dimensions and the piece shape from stdin)?',
-      },
-      {
-        key: 'unitTestsPlacementValidation',
-        label: "Are there tests for Placement Validation (e.g., checking that a move is rejected if it overlaps two of your own cells or one of the opponent's)?",
-      },
-      {
-        key: 'unitTestsBoundaryDetection',
-        label: 'Are there tests for Boundary Detection to ensure pieces are never placed partially outside the grid?',
-      },
-    ],
-  },
-  {
-    title: 'Basic',
-    items: [
-      { key: 'goodPractices', label: 'Does the code obey the good practices?' },
-      { key: 'hasTestFile', label: 'Is there a test file for this code?' },
-      { key: 'testsCoverCases', label: 'Are the tests checking each possible case?' },
-    ],
-  },
-  {
-    title: 'Bonus',
-    items: [
-      { key: 'hasVisualizer', label: 'Did the student create a visualizer for the project?' },
-    ],
-  },
-]
-
 const GATES: { key: 'map00' | 'map01' | 'map02' | 'bonus'; opponent: string; map: string; required: boolean }[] = [
   { key: 'map00', opponent: 'wall_e', map: 'map00', required: true },
   { key: 'map01', opponent: 'h2_d2', map: 'map01', required: true },
@@ -60,7 +25,6 @@ export default function AdminAuditDetail() {
   const [detail, setDetail] = useState<AuditDetail | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [checklist, setChecklist] = useState<Record<string, boolean>>({})
   const [notes, setNotes] = useState('')
 
   const load = useCallback(() => {
@@ -68,7 +32,6 @@ export default function AdminAuditDetail() {
     return api.adminAuditDetail(Number(botId))
       .then(d => {
         setDetail(d)
-        setChecklist(d.checklist ?? {})
         setNotes(d.notes ?? '')
       })
       .catch(e => setError(String(e instanceof Error ? e.message : e)))
@@ -79,9 +42,9 @@ export default function AdminAuditDetail() {
     load()
   }, [user, load])
 
-  // Only auto-poll while the automated stage is still running — once the
-  // bot reaches needs_review the admin may be mid-edit on the checklist or
-  // notes, and a background refetch would stomp on that.
+  // Only auto-poll while the automated stage is still running — once the bot
+  // reaches needs_review the admin may be mid-edit on notes, and a
+  // background refetch would stomp on that.
   useEffect(() => {
     if (!detail || detail.auditStatus !== 'running') return
     const t = setInterval(load, 4000)
@@ -102,18 +65,9 @@ export default function AdminAuditDetail() {
 
   const editable = detail.auditStatus === 'needs_review'
 
-  const toggle = (key: string) => {
-    if (!editable) return
-    const updated = { ...checklist, [key]: !checklist[key] }
-    setChecklist(updated)
-    api.adminSaveChecklist(detail.botId, updated)
-      .then(() => setNotice('Checklist saved.'))
-      .catch(e => setNotice(String(e instanceof Error ? e.message : e)))
-  }
-
   const decide = (decision: 'accept' | 'reject') => {
     const msg = decision === 'accept'
-      ? `Accept ${detail.botName}? This makes the bot live and schedules ladder matches.`
+      ? `Accept ${detail.botName}? This makes the bot live and puts it on the leaderboard.`
       : `Reject ${detail.botName}? This cannot be undone from here.`
     if (!confirm(msg)) return
     setNotice('')
@@ -133,6 +87,13 @@ export default function AdminAuditDetail() {
       </div>
 
       {notice && <div className="panel" style={{ marginBottom: 14 }}>{notice}</div>}
+
+      {detail.auditStatus === 'awaiting_submit' && (
+        <div className="panel" style={{ marginBottom: 14 }}>
+          Passed the automated gates, but the owner hasn't submitted it for review yet — it'll show up
+          in the main Bot Audits queue once they do.
+        </div>
+      )}
 
       <div className="panel">
         <div className="score-row">
@@ -194,41 +155,6 @@ export default function AdminAuditDetail() {
         ? <div className="log-box">{detail.buildLog}</div>
         : <p className="muted">No build log.</p>}
 
-      <h2>Manual checklist</h2>
-      {detail.auditStatus === 'running' && (
-        <p className="muted">Automated checks still running — the checklist unlocks once the bot reaches manual review.</p>
-      )}
-      {detail.auditStatus !== 'running' && (
-        <div className="panel">
-          {!editable && <p className="muted" style={{ marginTop: 0 }}>Read-only — this audit was already decided.</p>}
-          {CHECKLIST_GROUPS.map(group => (
-            <div key={group.title} className="checklist-group">
-              <div className="panel-title">{group.title}</div>
-              {group.items.map(item => (
-                <label key={item.key} className={`checklist-item${editable ? '' : ' disabled'}`}>
-                  <input
-                    type="checkbox"
-                    checked={checklist[item.key] ?? false}
-                    disabled={!editable}
-                    onChange={() => toggle(item.key)}
-                  />
-                  {item.label}
-                </label>
-              ))}
-              {group.title === 'Bonus' && (
-                <div className="bonus-gate-note">
-                  vs terminator win rate:{' '}
-                  <span className="result-win">{detail.gates.bonus.wins}W</span>
-                  {' / '}
-                  <span className="result-loss">{detail.gates.bonus.losses}L</span>
-                  {' (automated, informational only)'}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       <h2>Notes</h2>
       <textarea
         rows={6}
@@ -236,7 +162,7 @@ export default function AdminAuditDetail() {
         value={notes}
         onChange={e => setNotes(e.target.value)}
         disabled={!editable}
-        placeholder="Manual review notes…"
+        placeholder="Review notes…"
       />
       {detail.decidedAt && (
         <p className="muted small-num" style={{ marginTop: 8 }}>

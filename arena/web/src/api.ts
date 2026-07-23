@@ -167,6 +167,7 @@ export interface AuditEntry {
   createdAt: string
 }
 
+export type AuditStatus = 'running' | 'awaiting_submit' | 'needs_review' | 'accepted' | 'rejected'
 export interface AuditGate { wins: number; losses: number; opponent: string }
 export interface AuditGates { map00: AuditGate; map01: AuditGate; map02: AuditGate; bonus: AuditGate }
 export interface AuditSummary {
@@ -174,7 +175,7 @@ export interface AuditSummary {
   botName: string
   owner: string
   language: string
-  auditStatus: 'running' | 'needs_review' | 'accepted' | 'rejected'
+  auditStatus: AuditStatus
   automatedPassed: boolean | null
   gates: AuditGates
   createdAt: string
@@ -191,13 +192,23 @@ export interface AuditGameResult {
 }
 export interface AuditDetail extends AuditSummary {
   games: AuditGameResult[]
-  checklist: Record<string, boolean>
   notes: string | null
   reviewer: string | null
   decidedAt: string | null
   automatedError: string | null
   buildLog: string | null
   source: string | null
+}
+// Public, owner-facing view of a bot's audit — no admin-only fields.
+export interface BotAudit {
+  botId: number
+  auditStatus: AuditStatus
+  automatedPassed: boolean | null
+  automatedError: string | null
+  gates: AuditGates
+  games: AuditGameResult[]
+  createdAt: string
+  updatedAt: string
 }
 export interface DBTable { name: string; rows: number }
 export interface DBQueryResult {
@@ -223,6 +234,9 @@ export const api = {
   bots: () => req<Bot[]>('/api/bots'),
   bot: (id: number | string) =>
     req<{ bot: Bot; buildLog: string | null; matches: Match[] }>(`/api/bots/${id}`),
+  botAudit: (id: number | string) => req<BotAudit>(`/api/bots/${id}/audit`),
+  submitBotForReview: (id: number | string) =>
+    req<{ botId: number; auditStatus: string }>(`/api/bots/${id}/submit-for-review`, { method: 'POST' }),
   matches: () => req<Match[]>('/api/matches'),
   replay: (id: number | string) => req<Replay>(`/api/matches/${id}/replay`),
   maps: () => req<GameMap[]>('/api/maps'),
@@ -266,12 +280,6 @@ export const api = {
   adminAuditLog: () => req<AuditEntry[]>('/api/admin/audit-log'),
   adminAudits: () => req<AuditSummary[]>('/api/admin/audits'),
   adminAuditDetail: (botId: number) => req<AuditDetail>(`/api/admin/audits/${botId}`),
-  adminSaveChecklist: (botId: number, checklist: Record<string, boolean>) =>
-    req<{ ok: boolean }>(`/api/admin/audits/${botId}/checklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ checklist }),
-    }),
   adminDecideAudit: (botId: number, decision: 'accept' | 'reject', notes: string) =>
     req<{ botId: number; decision: string; botStatus: string }>(`/api/admin/audits/${botId}/decide`, {
       method: 'POST',

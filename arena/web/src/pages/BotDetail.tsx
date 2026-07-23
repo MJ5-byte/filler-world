@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useOutletContext, useParams } from 'react-router-dom'
-import { api, Bot, Match } from '../api'
+import { api, Bot, BotAudit, Match } from '../api'
 import type { AppContext } from '../App'
 import LangBadge from '../components/LangBadge'
 import MatchTable from '../components/MatchTable'
+
+const GATE_LABEL: Record<string, string> = {
+  map00: 'map00 vs wall_e',
+  map01: 'map01 vs h2_d2',
+  map02: 'map02 vs bender',
+  bonus: 'bonus vs terminator',
+}
 
 export default function BotDetail() {
   const { id } = useParams()
@@ -11,19 +18,34 @@ export default function BotDetail() {
   const [bot, setBot] = useState<Bot | null>(null)
   const [buildLog, setBuildLog] = useState<string | null>(null)
   const [matches, setMatches] = useState<Match[]>([])
+  const [audit, setAudit] = useState<BotAudit | null>(null)
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   useEffect(() => {
     if (!id) return
     let alive = true
-    const load = () =>
+    const load = () => {
       api.bot(id)
         .then(d => { if (alive) { setBot(d.bot); setBuildLog(d.buildLog); setMatches(d.matches) } })
         .catch(e => alive && setError(String(e)))
+      api.botAudit(id).then(a => alive && setAudit(a)).catch(() => alive && setAudit(null))
+    }
     load()
     const t = setInterval(load, 4000)
     return () => { alive = false; clearInterval(t) }
   }, [id])
+
+  const submitForReview = () => {
+    if (!id) return
+    setSubmitting(true)
+    setSubmitError('')
+    api.submitBotForReview(id)
+      .then(() => api.botAudit(id).then(setAudit))
+      .catch(e => setSubmitError(String(e instanceof Error ? e.message : e)))
+      .finally(() => setSubmitting(false))
+  }
 
   if (error) return <div className="error-box">{error}</div>
   if (!bot) return <p className="muted">Loading…</p>
@@ -97,8 +119,60 @@ export default function BotDetail() {
       {(bot.status === 'pending' || bot.status === 'building') && (
         <p className="muted">Building in the sandbox… this page refreshes automatically.</p>
       )}
-      {bot.status === 'auditing' && (
-        <p className="muted">Passed the build — now playing automated matches against reference bots for review… this page refreshes automatically.</p>
+
+      {audit && (audit.auditStatus === 'running' || audit.auditStatus === 'awaiting_submit'
+        || audit.auditStatus === 'needs_review' || (bot.status === 'rejected' && audit.gates)) && (
+        <div className="panel" style={{ marginTop: 14 }}>
+          <div className="panel-title">Audit results</div>
+          {audit.auditStatus === 'running' && (
+            <p className="muted" style={{ marginTop: 0 }}>
+              Playing the required matches against reference bots… this page refreshes automatically.
+            </p>
+          )}
+          {audit.automatedPassed === false && (
+            <p style={{ marginTop: 0 }}>
+              <span className="result-loss">Didn't clear the required win rate</span> — every gate below needs
+              at least 4 of 5 wins.
+            </p>
+          )}
+          {audit.automatedPassed === true && audit.auditStatus === 'awaiting_submit' && (
+            <p style={{ marginTop: 0 }}>
+              <span className="result-win">Passed the automated gates.</span> Submit it for admin review to be
+              considered for the leaderboard.
+            </p>
+          )}
+          {audit.auditStatus === 'needs_review' && (
+            <p className="muted" style={{ marginTop: 0 }}>Submitted — waiting on an admin to review it.</p>
+          )}
+          {audit.gates && (
+            <table>
+              <thead>
+                <tr><th>Gate</th><th className="num">Result</th></tr>
+              </thead>
+              <tbody>
+                {(['map00', 'map01', 'map02', 'bonus'] as const).map(g => {
+                  const gate = audit.gates[g]
+                  return (
+                    <tr key={g}>
+                      <td className="muted">{GATE_LABEL[g]}{g === 'bonus' && <span className="muted"> (bonus)</span>}</td>
+                      <td className="num">
+                        <span className={gate.wins >= 4 ? 'result-win' : 'result-loss'}>{gate.wins}/{gate.losses}</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+          {isMine && audit.auditStatus === 'awaiting_submit' && (
+            <div style={{ marginTop: 12 }}>
+              <button disabled={submitting} onClick={submitForReview}>
+                {submitting ? 'Submitting…' : 'Submit for review'}
+              </button>
+              {submitError && <div className="error-box" style={{ marginTop: 10 }}>{submitError}</div>}
+            </div>
+          )}
+        </div>
       )}
 
       <h2>Match history</h2>

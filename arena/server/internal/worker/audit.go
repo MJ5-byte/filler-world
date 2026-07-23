@@ -49,9 +49,9 @@ const auditGamesPerGate = 5
 // handleAudit runs the automated portion of a bot's review: it plays it
 // against the fixed set of reference bots and records win/loss tallies plus
 // a per-game log. If the automated gates pass, the bot moves to
-// needs_review for a human to finish the manual rubric and accept/reject it;
-// if they fail, the bot is auto-rejected — no human needs to look at a bot
-// that can't clear the required win rate.
+// awaiting_submit so the owner can see the result and choose to submit it
+// for admin review; if they fail, the bot is auto-rejected — no human needs
+// to look at a bot that can't clear the required win rate.
 func (w *Worker) handleAudit(ctx context.Context, botID int64) {
 	var name, language, binaryPath, status string
 	err := w.Pool.QueryRow(ctx,
@@ -163,9 +163,14 @@ func (w *Worker) handleAudit(ctx context.Context, botID int64) {
 		gamesJSON = nil
 	}
 
+	// A bot that clears the required gates doesn't go straight into the
+	// admin's queue: the owner sees the pass first and has to explicitly
+	// submit it for review (POST /api/bots/{id}/submit-for-review moves this
+	// to needs_review). A bot that fails is auto-rejected immediately - no
+	// human needs to look at one that can't hit the required win rate.
 	auditStatus := "rejected"
 	if automatedPassed {
-		auditStatus = "needs_review"
+		auditStatus = "awaiting_submit"
 	}
 
 	_, err = w.Pool.Exec(ctx, `

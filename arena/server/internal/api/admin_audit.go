@@ -85,10 +85,13 @@ func intOr0(p *int) int {
 	return *p
 }
 
-// adminListAudits lists bots currently mid-audit-pipeline (status='auditing').
+// adminListAudits lists bots the owner has explicitly submitted for review
+// (bot_audits.status='needs_review'). A bot that's still running its
+// automated gates, or that passed but hasn't been submitted yet, doesn't
+// show up here — the admin only sees what owners actually send them.
 func (s *Server) adminListAudits(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
 	rows, err := s.Pool.Query(r.Context(), auditListSelect+`
-		WHERE b.status='auditing'
+		WHERE ba.status='needs_review'
 		ORDER BY b.id`)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -108,7 +111,10 @@ func (s *Server) adminListAudits(w http.ResponseWriter, r *http.Request, _ *Auth
 }
 
 // adminGetAudit returns full detail for one bot's audit, including the raw
-// games/checklist JSON, build log, and (best-effort) the uploaded source.
+// games JSON, build log, and (best-effort) the uploaded source. Admins can
+// look up any bot's audit directly regardless of status (e.g. mid-run, or
+// still awaiting the owner's submission) — only the list view is restricted
+// to submitted ones.
 func (s *Server) adminGetAudit(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
 	botID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -127,13 +133,13 @@ func (s *Server) adminGetAudit(w http.ResponseWriter, r *http.Request, _ *Authed
 		return
 	}
 
-	var games, checklist []byte
+	var games []byte
 	var notes, reviewer, automatedError *string
 	var decidedAt *time.Time
 	err = s.Pool.QueryRow(ctx, `
-		SELECT games, checklist, notes, reviewer, automated_error, decided_at
+		SELECT games, notes, reviewer, automated_error, decided_at
 		FROM bot_audits WHERE bot_id=$1`, botID).
-		Scan(&games, &checklist, &notes, &reviewer, &automatedError, &decidedAt)
+		Scan(&games, &notes, &reviewer, &automatedError, &decidedAt)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -141,12 +147,9 @@ func (s *Server) adminGetAudit(w http.ResponseWriter, r *http.Request, _ *Authed
 	var buildLog *string
 	_ = s.Pool.QueryRow(ctx, `SELECT build_log FROM bots WHERE id=$1`, botID).Scan(&buildLog)
 
-	var gamesJSON, checklistJSON any
+	var gamesJSON any
 	if len(games) > 0 {
 		_ = json.Unmarshal(games, &gamesJSON)
-	}
-	if len(checklist) > 0 {
-		_ = json.Unmarshal(checklist, &checklistJSON)
 	}
 
 	var source *string
@@ -172,7 +175,6 @@ func (s *Server) adminGetAudit(w http.ResponseWriter, r *http.Request, _ *Authed
 		"createdAt":       a.CreatedAt,
 		"updatedAt":       a.UpdatedAt,
 		"games":           gamesJSON,
-		"checklist":       checklistJSON,
 		"notes":           notes,
 		"reviewer":        reviewer,
 		"decidedAt":       decidedAt,
@@ -180,52 +182,6 @@ func (s *Server) adminGetAudit(w http.ResponseWriter, r *http.Request, _ *Authed
 		"buildLog":        buildLog,
 		"source":          source,
 	})
-}
-
-// adminSaveAuditChecklist persists the human reviewer's rubric checkboxes.
-// Only allowed while the audit is awaiting review.
-func (s *Server) adminSaveAuditChecklist(w http.ResponseWriter, r *http.Request, _ *AuthedUser) {
-	botID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "bad id")
-		return
-	}
-	var req struct {
-		Checklist map[string]bool `json:"checklist"`
-	}
-	if err := decodeJSON(w, r, &req); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ctx := r.Context()
-
-	var status string
-	err = s.Pool.QueryRow(ctx, `SELECT status FROM bot_audits WHERE bot_id=$1`, botID).Scan(&status)
-	if errors.Is(err, pgx.ErrNoRows) {
-		writeErr(w, http.StatusNotFound, "audit not found")
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if status != "needs_review" {
-		writeErr(w, http.StatusBadRequest, "audit is not awaiting review")
-		return
-	}
-
-	checklistJSON, err := json.Marshal(req.Checklist)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "bad checklist: "+err.Error())
-		return
-	}
-	if _, err := s.Pool.Exec(ctx,
-		`UPDATE bot_audits SET checklist=$2, updated_at=now() WHERE bot_id=$1`,
-		botID, checklistJSON); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // adminDecideAudit accepts or rejects a bot that's awaiting human review.

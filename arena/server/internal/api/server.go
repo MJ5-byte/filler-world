@@ -66,6 +66,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/bots", s.uploadLimit.middleware(s.requireUser(s.createBot)))
 	mux.HandleFunc("GET /api/bots", s.listBots)
 	mux.HandleFunc("GET /api/bots/{id}", s.getBot)
+	mux.HandleFunc("GET /api/bots/{id}/audit", s.botAudit)
+	mux.HandleFunc("POST /api/bots/{id}/submit-for-review", s.requireUser(s.submitBotForReview))
 	mux.HandleFunc("POST /api/matches", s.matchLimit.middleware(s.requireUser(s.createMatch)))
 	mux.HandleFunc("GET /api/matches", s.listMatches)
 	mux.HandleFunc("GET /api/matches/{id}", s.getMatch)
@@ -89,7 +91,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/admin/audit-log", s.requireAdmin(s.adminAuditLog))
 	mux.HandleFunc("GET /api/admin/audits", s.requireAdmin(s.adminListAudits))
 	mux.HandleFunc("GET /api/admin/audits/{id}", s.requireAdmin(s.adminGetAudit))
-	mux.HandleFunc("POST /api/admin/audits/{id}/checklist", s.requireAdmin(s.adminSaveAuditChecklist))
 	mux.HandleFunc("POST /api/admin/audits/{id}/decide", s.requireAdmin(s.adminDecideAudit))
 	mux.HandleFunc("GET /api/admin/db/tables", s.requireAdmin(s.adminDBTables))
 	mux.HandleFunc("GET /api/admin/db/tables/{table}", s.requireAdmin(s.adminDBTableRows))
@@ -292,6 +293,91 @@ func (s *Server) getBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"bot": b, "buildLog": buildLog, "matches": matches})
+}
+
+// botAudit returns the automated gate results for one bot's audit — public,
+// same transparency level as build logs and replays. It never includes the
+// admin-only fields (reviewer notes, source code): those stay behind
+// /api/admin/audits.
+func (s *Server) botAudit(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	ctx := r.Context()
+
+	a, err := scanAuditListRow(s.Pool.QueryRow(ctx, auditListSelect+` WHERE b.id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "bot not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var games []byte
+	var automatedError *string
+	_ = s.Pool.QueryRow(ctx, `SELECT games, automated_error FROM bot_audits WHERE bot_id=$1`, id).
+		Scan(&games, &automatedError)
+	var gamesJSON any
+	if len(games) > 0 {
+		_ = json.Unmarshal(games, &gamesJSON)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"botId":           a.BotID,
+		"auditStatus":     a.AuditStatus,
+		"automatedPassed": a.AutomatedPassed,
+		"automatedError":  automatedError,
+		"gates":           a.Gates,
+		"games":           gamesJSON,
+		"createdAt":       a.CreatedAt,
+		"updatedAt":       a.UpdatedAt,
+	})
+}
+
+// submitBotForReview moves a bot from awaiting_submit to needs_review —
+// the owner's explicit "send this to the admins" action. Only the bot's
+// owner can do this, and only once the automated gates have actually passed.
+func (s *Server) submitBotForReview(w http.ResponseWriter, r *http.Request, u *AuthedUser) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "bad id")
+		return
+	}
+	ctx := r.Context()
+
+	var ownerID *int64
+	err = s.Pool.QueryRow(ctx, `SELECT owner_id FROM bots WHERE id=$1`, id).Scan(&ownerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "bot not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if ownerID == nil || *ownerID != u.ID {
+		writeErr(w, http.StatusForbidden, "you can only submit your own bot")
+		return
+	}
+
+	ct, err := s.Pool.Exec(ctx,
+		`UPDATE bot_audits SET status='needs_review', updated_at=now()
+		 WHERE bot_id=$1 AND status='awaiting_submit'`, id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		writeErr(w, http.StatusBadRequest, "this bot isn't ready to submit (audit still running, already submitted, or was rejected)")
+		return
+	}
+
+	s.logAudit(ctx, u.Login, "submit_bot_for_review", fmt.Sprintf("bot #%d", id))
+	writeJSON(w, http.StatusOK, map[string]any{"botId": id, "auditStatus": "needs_review"})
 }
 
 // ---- matches ----
